@@ -54,6 +54,26 @@
   .slot.sel { border-color:#e8c860; box-shadow:0 0 10px rgba(232,200,96,.55); }
   .slot canvas { width:100%; height:100%; image-rendering:pixelated; }
   .slot .num { position:absolute; top:1px; left:4px; color:rgba(255,255,255,.7); font-size:10px; font-family:monospace; }
+  .slot .cnt { position:absolute; bottom:1px; right:4px; color:#fff; font-size:11px; font-family:monospace; text-shadow:0 1px 2px #000; }
+  .slot.empty canvas { opacity:.25; }
+
+  #digbar {
+    display:none; position:fixed; left:50%; top:calc(50% + 26px); transform:translateX(-50%);
+    width:64px; height:7px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.4); border-radius:3px;
+  }
+  #digbar div { height:100%; width:0%; background:#e8c860; border-radius:2px; }
+
+  .invgrid { display:flex; flex-wrap:wrap; gap:6px; width:100%; min-height:58px; }
+  .islot {
+    width:52px; height:52px; background:rgba(0,0,0,.4); border:2px solid rgba(255,255,255,.15);
+    border-radius:5px; position:relative; cursor:pointer; image-rendering:pixelated;
+  }
+  .islot:hover { border-color:rgba(232,200,96,.7); }
+  .islot.sel { border-color:#e8c860; box-shadow:0 0 8px rgba(232,200,96,.5); }
+  .islot canvas { width:100%; height:100%; image-rendering:pixelated; }
+  .islot .cnt { position:absolute; bottom:1px; right:4px; color:#fff; font-size:12px; font-family:monospace; text-shadow:0 1px 2px #000; }
+  .craftrow { display:flex; align-items:center; gap:10px; color:#ddd; font-size:15px; width:100%; }
+  .craftrow .mbtn { width:auto; }
 
   /* ---------- Menús ---------- */
   #menu {
@@ -124,6 +144,7 @@
 <canvas id="c"></canvas>
 
 <div id="crosshair"></div>
+<div id="digbar"><div></div></div>
 <div id="biome"></div>
 <div id="coords"></div>
 <div id="netinfo"></div>
@@ -146,8 +167,8 @@
       <button class="mbtn" id="btn-join">🔑 &nbsp;Unirse con código</button>
     </div>
     <div class="hint">
-      W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · clic izq/der romper/colocar<br>
-      1–9 o rueda elegir bloque · R volver a La Comarca · ESC menú
+      W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · mantén clic izq para picar · clic der colocar<br>
+      1–5 herramientas · 6–9 materiales · E inventario y fabricación · R volver a La Comarca · ESC menú
     </div>
   </div>
 
@@ -174,6 +195,32 @@
     <button class="mbtn small" id="btn-join-back">← Volver</button>
   </div>
 
+  <div class="screen" id="scr-inv">
+    <h2>INVENTARIO</h2>
+    <div class="panel" style="max-width:640px;">
+      <label class="flabel">Huecos del cinturón (teclas 6–9) — elige un hueco y luego un material</label>
+      <div id="belt" class="invgrid"></div>
+      <button class="mbtn small" id="btn-clearslot">Vaciar hueco elegido</button>
+      <label class="flabel">Materiales recolectados</label>
+      <div id="invgrid" class="invgrid"></div>
+      <label class="flabel">Fabricar</label>
+      <div id="craft" style="width:100%; display:flex; flex-direction:column; gap:8px;"></div>
+      <button class="mbtn small" id="btn-inv-close">▶ Volver al juego (E)</button>
+    </div>
+  </div>
+
+  <div class="screen" id="scr-chest">
+    <h2>COFRE</h2>
+    <div class="panel" style="max-width:680px;">
+      <div class="row" style="align-items:flex-start;">
+        <div style="flex:1;"><label class="flabel">Dentro del cofre</label><div id="chestgrid" class="invgrid"></div></div>
+        <div style="flex:1;"><label class="flabel">Tu inventario</label><div id="chestinv" class="invgrid"></div></div>
+      </div>
+      <div class="hint">Clic: mover todo el montón · Shift+clic: mover solo 1</div>
+      <button class="mbtn small" id="btn-chest-close">▶ Volver al juego (E)</button>
+    </div>
+  </div>
+
   <div class="screen" id="scr-pause">
     <h2 id="pause-title"></h2>
     <div id="pause-net"></div>
@@ -183,7 +230,7 @@
       <button class="mbtn small" id="btn-copy" style="display:none;">📋 Copiar código</button>
       <button class="mbtn small" id="btn-exit">💾 Guardar y salir al menú</button>
     </div>
-    <div class="hint">W A S D · ESPACIO · SHIFT correr · clic romper/colocar · 1–9 bloques · R spawn</div>
+    <div class="hint">W A S D · ESPACIO · SHIFT correr · mantén clic izq: picar · clic der: colocar · E: inventario · R: spawn</div>
   </div>
 
 </div>
@@ -216,6 +263,7 @@ const B = {
   AIR:0, GRASS:1, DIRT:2, STONE:3, SNOW:4, LOG:5, LEAVES:6,
   MLOG:7, MLEAVES:8, MROCK:9, LAVA:10, WATER:11, SAND:12,
   MITHRIL:13, DBRICK:14, PLANK:15, COBBLE:16, BEDROCK:17,
+  CHEST:18, FIRE:19,
 };
 const NAMES = {
   [B.GRASS]:'Hierba', [B.DIRT]:'Tierra', [B.STONE]:'Piedra', [B.SNOW]:'Nieve',
@@ -223,15 +271,31 @@ const NAMES = {
   [B.MLEAVES]:'Hojas de mallorn', [B.MROCK]:'Roca de Mordor', [B.LAVA]:'Lava',
   [B.WATER]:'Agua', [B.SAND]:'Arena', [B.MITHRIL]:'Mithril',
   [B.DBRICK]:'Ladrillo de Barad-dûr', [B.PLANK]:'Tablones', [B.COBBLE]:'Piedra labrada',
-  [B.BEDROCK]:'Roca madre',
+  [B.BEDROCK]:'Roca madre', [B.CHEST]:'Cofre', [B.FIRE]:'Fuego',
 };
-const HOTBAR = [B.COBBLE, B.PLANK, B.LOG, B.LEAVES, B.MLEAVES, B.DBRICK, B.STONE, B.MITHRIL, B.LAVA];
+
+// herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
+const TOOLS = [
+  { k:'hand',   name:'Mano' },
+  { k:'pick',   name:'Pico' },
+  { k:'shovel', name:'Pala' },
+  { k:'axe',    name:'Hacha' },
+  { k:'bucket', name:'Cubo' },
+];
+const NMAT = 4;
+// materiales que se pueden tener en el inventario
+const MATERIALS = [B.DIRT, B.COBBLE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
+                   B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.CHEST, B.WATER, B.LAVA];
+// qué suelta cada bloque al romperse (por defecto, él mismo)
+const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0 };
+const FLAMMABLE = new Set([B.GRASS, B.LEAVES, B.MLEAVES, B.LOG, B.MLOG, B.PLANK, B.CHEST]);
 
 const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3 };
 const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor'];
 
 const isFluid  = id => id === B.WATER || id === B.LAVA;
-const isSolid  = id => id > 0 && !isFluid(id);
+const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE;
+const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE;
 
 /* ============================================================
    RUIDO (value noise + fBm, determinista)
@@ -347,22 +411,121 @@ function flattenEdits() {
   return out;
 }
 
-// Edición hecha por el jugador local: aplica, registra y propaga por red
+/* ----- inventario y cofres ----- */
+let inv = {};                                  // id -> cantidad
+let hotbarMats = [B.PLANK, null, null, null];  // huecos 6-9
+const chests = new Map();                      // "x,y,z" -> { id: cantidad }
+
+function addInv(id, n = 1) { inv[id] = (inv[id] || 0) + n; saveDirty = true; refreshHotbar(); }
+function removeInv(id, n = 1) {
+  inv[id] = Math.max(0, (inv[id] || 0) - n);
+  if (!inv[id]) delete inv[id];
+  saveDirty = true; refreshHotbar();
+}
+function broadcastChest(k, c) {
+  const msg = { t: 'chest', k, c };
+  if (isHost) broadcast(msg);
+  else if (isGuest && hostConn && hostConn.open) hostConn.send(msg);
+  if (!isGuest) saveDirty = true;
+}
+function applyChestMsg(k, c) {
+  if (c) chests.set(k, c); else chests.delete(k);
+  if (openChestKey === k) renderChest();
+}
+
+// Edición hecha por el jugador local (o por las reacciones): aplica, registra y propaga
 function playerSetBlock(wx, wy, wz, id) {
   if (wy < 1 || wy >= WH) return;
+  const k = wx + ',' + wy + ',' + wz;
+  const prev = worldGetBlock(wx, wy, wz);
+  if (prev === B.CHEST && id !== B.CHEST && chests.has(k)) { chests.delete(k); broadcastChest(k, null); }
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
   saveDirty = true;
   const msg = { t: 'set', x: wx, y: wy, z: wz, id };
   if (isHost) broadcast(msg);
   else if (isGuest && hostConn && hostConn.open) hostConn.send(msg);
+  queueReactAround(wx, wy, wz);
 }
 // Edición recibida por red
 function netApplySet(wx, wy, wz, id) {
   if (wy < 1 || wy >= WH) return;
+  const k = wx + ',' + wy + ',' + wz;
+  const prev = worldGetBlock(wx, wy, wz);
+  if (prev === B.CHEST && id !== B.CHEST) chests.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
-  if (isHost) saveDirty = true;
+  if (isHost) { saveDirty = true; queueReactAround(wx, wy, wz); }
+}
+
+/* ----- reacciones "realistas": fuego, lava y agua ----- */
+// La ejecuta solo el anfitrión (o un jugador en solitario); los invitados reciben los cambios por red.
+const reactQueue = [];
+function queueReact(x, y, z, action, delay, after) {
+  if (isGuest || reactQueue.length > 600) return;
+  reactQueue.push({ due: performance.now() + delay, x, y, z, action, after });
+}
+function queueReactAround(x, y, z) {
+  if (isGuest) return;
+  queueReact(x, y, z, 'check', 180);
+  const D = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  for (let i = 0; i < 6; i++) queueReact(x + D[i][0], y + D[i][1], z + D[i][2], 'check', 240 + i * 50);
+}
+const DIRS6 = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+function processReacts(now) {
+  if (isGuest || !inWorld) return;
+  for (let i = reactQueue.length - 1; i >= 0; i--) {
+    const e = reactQueue[i];
+    if (e.due > now) continue;
+    reactQueue.splice(i, 1);
+    const id = worldGetBlock(e.x, e.y, e.z);
+    if (e.action === 'check') {
+      if (id === B.LAVA) {
+        let cooled = false;
+        for (const d of DIRS6) {
+          if (worldGetBlock(e.x + d[0], e.y + d[1], e.z + d[2]) === B.WATER) {
+            playerSetBlock(e.x, e.y, e.z, B.STONE);   // el agua enfría la lava
+            cooled = true; break;
+          }
+        }
+        if (!cooled) for (const d of DIRS6) {
+          const nid = worldGetBlock(e.x + d[0], e.y + d[1], e.z + d[2]);
+          if (FLAMMABLE.has(nid))
+            queueReact(e.x + d[0], e.y + d[1], e.z + d[2], 'burn', 400 + Math.random() * 700,
+                       nid === B.GRASS ? B.DIRT : B.AIR);
+        }
+      } else if (id === B.WATER) {
+        for (const d of DIRS6) {
+          if (worldGetBlock(e.x + d[0], e.y + d[1], e.z + d[2]) === B.LAVA)
+            playerSetBlock(e.x + d[0], e.y + d[1], e.z + d[2], B.STONE);
+        }
+      } else if (FLAMMABLE.has(id)) {
+        for (const d of DIRS6) {
+          const nid = worldGetBlock(e.x + d[0], e.y + d[1], e.z + d[2]);
+          // la lava prende cualquier cosa inflamable; el fuego no salta a la hierba (solo la chamusca la lava)
+          if (nid === B.LAVA || (nid === B.FIRE && id !== B.GRASS)) {
+            queueReact(e.x, e.y, e.z, 'burn', 400 + Math.random() * 700, id === B.GRASS ? B.DIRT : B.AIR);
+            break;
+          }
+        }
+      }
+    } else if (e.action === 'burn') {
+      if (FLAMMABLE.has(id)) {
+        playerSetBlock(e.x, e.y, e.z, B.FIRE);
+        queueReact(e.x, e.y, e.z, 'out', 700 + Math.random() * 500, e.after);
+      }
+    } else if (e.action === 'out') {
+      if (id === B.FIRE) {
+        playerSetBlock(e.x, e.y, e.z, e.after ?? B.AIR);
+        for (const d of DIRS6) {
+          const nid = worldGetBlock(e.x + d[0], e.y + d[1], e.z + d[2]);
+          // el incendio se propaga por hojas y madera, pero no de hierba en hierba
+          if (FLAMMABLE.has(nid) && nid !== B.GRASS && Math.random() < 0.45)
+            queueReact(e.x + d[0], e.y + d[1], e.z + d[2], 'burn', 300 + Math.random() * 800, B.AIR);
+        }
+      }
+    }
+  }
 }
 
 function genChunk(cx, cz) {
@@ -502,7 +665,7 @@ function genStructures(data, cx, cz) {
       if (hdz === 0 && hdx <= -2 && hdx >= -5) { set(lx, ground + 1, lz, B.AIR); set(lx, ground + 2, lz, B.AIR); }
       if (Math.abs(hdz) === 1 && hdx === -4) { set(lx, ground + 1, lz, B.LOG); set(lx, ground + 2, lz, B.LOG); }
       if (Math.abs(hdz) <= 1 && hdx === -4) set(lx, ground + 3, lz, B.LOG);
-      if (hdx === 2 && hdz === 0) set(lx, ground + 1, lz, B.MITHRIL);
+      if (hdx === 2 && hdz === 0) set(lx, ground + 1, lz, B.CHEST);   // cofre con regalo
     }
   }
 }
@@ -612,6 +775,32 @@ const TILE_PAINTERS = [
       actx.fillStyle = css(44 * f, 44 * f, 48 * f); actx.fillRect(ox + x, oy + y, 2, 2);
     }
   },
+  /* 19 chest_side */ (ox, oy, rng) => {
+    speckle(ox, oy, [124, 92, 50], 0.1, rng);
+    actx.fillStyle = css(70, 50, 26);
+    actx.fillRect(ox, oy, T, 2); actx.fillRect(ox, oy + 14, T, 2);
+    actx.fillRect(ox, oy, 2, T); actx.fillRect(ox + 14, oy, 2, T);
+    actx.fillRect(ox, oy + 6, T, 1);                       // junta de la tapa
+    actx.fillStyle = css(168, 172, 178);
+    actx.fillRect(ox + 7, oy + 5, 2, 4);                   // cierre metálico
+  },
+  /* 20 chest_top */ (ox, oy, rng) => {
+    speckle(ox, oy, [134, 100, 56], 0.1, rng);
+    actx.fillStyle = css(70, 50, 26);
+    actx.fillRect(ox, oy, T, 2); actx.fillRect(ox, oy + 14, T, 2);
+    actx.fillRect(ox, oy, 2, T); actx.fillRect(ox + 14, oy, 2, T);
+  },
+  /* 21 fire */ (ox, oy, rng) => {
+    speckle(ox, oy, [226, 88, 20], 0.25, rng);
+    for (let i = 0; i < 10; i++) {                          // llamas amarillas
+      const x = (rng() * 14) | 0, y = 4 + ((rng() * 11) | 0), h = 2 + ((rng() * 4) | 0);
+      actx.fillStyle = css(255, 210, 70); actx.fillRect(ox + x, oy + y, 2, h);
+    }
+    for (let i = 0; i < 4; i++) {                           // brasas oscuras abajo
+      actx.fillStyle = css(140, 30, 10);
+      actx.fillRect(ox + ((rng() * 13) | 0), oy + 13 + ((rng() * 2) | 0), 3, 2);
+    }
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -635,6 +824,8 @@ const TILE_MAP = {
   [B.PLANK]:   { all: 16 },
   [B.COBBLE]:  { all: 17 },
   [B.BEDROCK]: { all: 18 },
+  [B.CHEST]:   { top: 20, bottom: 20, side: 19 },
+  [B.FIRE]:    { all: 21 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -709,8 +900,7 @@ const UV_E = 0.02;
 
 function faceVisible(self, nb) {
   if (nb === -1) return false;
-  if (self === B.WATER) return nb === B.AIR;
-  return nb === B.AIR || nb === B.WATER;
+  return isTransparent(nb) && nb !== self;
 }
 
 function buildChunkMesh(ch) {
@@ -738,7 +928,7 @@ function buildChunkMesh(ch) {
   for (let ly = 0; ly < WH; ly++) for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
     const id = data[IDX(lx, ly, lz)];
     if (!id) continue;
-    const bucket = id === B.WATER ? buckets.water : id === B.LAVA ? buckets.glow : buckets.solid;
+    const bucket = id === B.WATER ? buckets.water : (id === B.LAVA || id === B.FIRE) ? buckets.glow : buckets.solid;
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const nb = nbAt(lx + face.dir[0], ly + face.dir[1], lz + face.dir[2]);
@@ -833,6 +1023,7 @@ function resetWorld() {
   }
   chunks.clear(); dirty.clear(); editsByChunk.clear();
   genQueue = []; lastPC = null;
+  reactQueue.length = 0;
   for (const id of [...avatars.keys()]) removeAvatar(id);
 }
 
@@ -911,7 +1102,7 @@ function respawn() {
    RAYCAST (DDA voxel)
 ============================================================ */
 const _dir = new THREE.Vector3();
-function raycast(maxDist) {
+function raycast(maxDist, opts = {}) {
   camera.getWorldDirection(_dir);
   const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
   let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
@@ -923,7 +1114,9 @@ function raycast(maxDist) {
   let face = [0, 0, 0], t = 0;
   while (t <= maxDist) {
     const id = worldGetBlock(x, y, z);
-    if (id !== -1 && isSolid(id)) return { x, y, z, id, face };
+    if (id !== -1 && (isSolid(id) ||
+        (opts.fire !== false && id === B.FIRE) ||
+        (opts.fluids && isFluid(id)))) return { x, y, z, id, face };
     if (tmX < tmY && tmX < tmZ) { x += stepX; t = tmX; tmX += tdX; face = [-stepX, 0, 0]; }
     else if (tmY < tmZ)         { y += stepY; t = tmY; tmY += tdY; face = [0, -stepY, 0]; }
     else                        { z += stepZ; t = tmZ; tmZ += tdZ; face = [0, 0, -stepZ]; }
@@ -937,18 +1130,85 @@ function intersectsPlayer(bx, by, bz) {
          bz + 1 > player.z - PHALF && bz < player.z + PHALF;
 }
 
-function doAction(btn) {
-  const hit = raycast(6);
-  if (!hit) return;
-  if (btn === 0) {
-    if (hit.id !== B.BEDROCK) playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
-  } else if (btn === 2) {
-    const px = hit.x + hit.face[0], py = hit.y + hit.face[1], pz = hit.z + hit.face[2];
-    const cur = worldGetBlock(px, py, pz);
-    if (cur !== B.AIR && !isFluid(cur)) return;
-    if (intersectsPlayer(px, py, pz)) return;
-    playerSetBlock(px, py, pz, HOTBAR[sel]);
+/* ----- picar (mantener clic izq), cubo y colocar ----- */
+let digState = null, lastBucket = 0;
+const digbarEl = () => $('digbar');
+const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
+
+function digTime(id, tool) {
+  let base, match;
+  if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW) { base = 0.8; match = 'shovel'; }
+  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST) { base = 1.5; match = 'axe'; }
+  else if (id === B.LEAVES || id === B.MLEAVES) { base = 0.4; match = 'axe'; }
+  else if (id === B.MITHRIL) { base = 3.2; match = 'pick'; }
+  else { base = 2.4; match = 'pick'; }   // piedra y similares
+  return tool === match ? base * 0.25 : base;
+}
+function hideDigbar() { digbarEl().style.display = 'none'; }
+function showDigbar(p) {
+  const el = digbarEl();
+  el.style.display = 'block';
+  el.firstElementChild.style.width = Math.min(100, p * 100) + '%';
+}
+
+function completeBreak(hit) {
+  const k = hit.x + ',' + hit.y + ',' + hit.z;
+  if (hit.id === B.CHEST) {
+    const c = chests.get(k);
+    if (c) {
+      let got = 0;
+      for (const [id, n] of Object.entries(c)) { addInv(+id, n); got += n; }
+      if (got) toast('Recoges el cofre y ' + got + ' materiales de dentro');
+    }
+    chests.delete(k); broadcastChest(k, null);
   }
+  const drop = DROPS[hit.id] !== undefined ? DROPS[hit.id] : hit.id;
+  if (drop) addInv(drop);
+  playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
+}
+
+function updateDig(dt, now) {
+  if (currentTool() === 'bucket') {
+    digState = null; hideDigbar();
+    const hit = raycast(6, { fluids: true, fire: false });
+    if (hit && isFluid(hit.id) && now - lastBucket > 300) {
+      lastBucket = now;
+      addInv(hit.id);
+      playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
+      toast('+1 ' + NAMES[hit.id]);
+    }
+    return;
+  }
+  const hit = raycast(6);
+  if (!hit) { digState = null; hideDigbar(); return; }
+  if (hit.id === B.FIRE) { playerSetBlock(hit.x, hit.y, hit.z, B.AIR); digState = null; return; }  // apagar fuego
+  if (hit.id === B.BEDROCK) { digState = null; hideDigbar(); return; }
+  const key = hit.x + ',' + hit.y + ',' + hit.z;
+  if (!digState || digState.key !== key) digState = { key, p: 0 };
+  digState.p += dt / digTime(hit.id, currentTool());
+  showDigbar(digState.p);
+  if (digState.p >= 1) { completeBreak(hit); digState = null; hideDigbar(); }
+}
+
+function tryPlace(initial) {
+  const hit = raycast(6, { fire: false });
+  if (!hit) return;
+  if (hit.id === B.CHEST) { if (initial) openChest(hit.x + ',' + hit.y + ',' + hit.z); return; }
+  if (sel < TOOLS.length) {
+    if (initial) toast('Con la ' + TOOLS[sel].name.toLowerCase() + ' no se construye — elige un material (huecos 6–9)');
+    return;
+  }
+  const mat = hotbarMats[sel - TOOLS.length];
+  if (mat == null) { if (initial) toast('Hueco vacío — pulsa E y asigna un material'); return; }
+  if (!(inv[mat] > 0)) { if (initial) toast('No te queda ' + NAMES[mat]); return; }
+  const px = hit.x + hit.face[0], py = hit.y + hit.face[1], pz = hit.z + hit.face[2];
+  const cur = worldGetBlock(px, py, pz);
+  if (cur === -1) return;
+  if (cur !== B.AIR && !isFluid(cur) && cur !== B.FIRE) return;
+  if (isSolid(mat) && intersectsPlayer(px, py, pz)) return;
+  removeInv(mat, 1);
+  if (mat === B.CHEST) { chests.set(px + ',' + py + ',' + pz, {}); broadcastChest(px + ',' + py + ',' + pz, {}); }
+  playerSetBlock(px, py, pz, mat);
 }
 
 /* ============================================================
@@ -1074,6 +1334,7 @@ function onHostData(conn, m) {
       t: 'welcome', seed: SEED, dayT,
       name: worldDisplayName,
       edits: flattenEdits(),
+      chests: Object.fromEntries(chests),
       players: [
         { id: 'H', name: profile.name, color: profile.color, x: player.x, y: player.y, z: player.z },
         ...[...conns.entries()].filter(([id]) => id !== conn.peer)
@@ -1090,6 +1351,10 @@ function onHostData(conn, m) {
   } else if (m.t === 'set') {
     netApplySet(m.x, m.y, m.z, m.id);
     broadcast({ t: 'set', x: m.x, y: m.y, z: m.z, id: m.id }, conn.peer);
+  } else if (m.t === 'chest') {
+    applyChestMsg(m.k, m.c);
+    broadcast({ t: 'chest', k: m.k, c: m.c }, conn.peer);
+    saveDirty = true;
   }
 }
 
@@ -1141,7 +1406,8 @@ function onGuestData(m, code) {
     }
     isGuest = true;
     roomCode = code;
-    startWorld({ name: m.name || 'Partida remota', seed: m.seed }, { dayT: m.dayT, edits: byChunk }, 'guest');
+    startWorld({ name: m.name || 'Partida remota', seed: m.seed },
+               { dayT: m.dayT, edits: byChunk, chests: m.chests || {} }, 'guest');
     for (const p of m.players) addAvatar(p.id, p.name, p.color, p.x, p.y, p.z);
     netTickStart();
     updateNetInfo();
@@ -1157,6 +1423,8 @@ function onGuestData(m, code) {
   } else if (m.t === 'pleave') {
     const a = avatars.get(m.id);
     if (a) { toast(a.name + ' ha salido de la partida'); removeAvatar(m.id); updateNetInfo(); }
+  } else if (m.t === 'chest') {
+    applyChestMsg(m.k, m.c);
   } else if (m.t === 'day') {
     dayT = m.dayT;
   }
@@ -1201,6 +1469,8 @@ function saveWorld() {
     dayT,
     player: { x: player.x, y: player.y, z: player.z, yaw, pitch },
     edits,
+    inv, hotbarMats,
+    chests: Object.fromEntries(chests),
   });
   currentWorld.last = Date.now();
   const i = worlds.findIndex(w => w.id === currentWorld.id);
@@ -1209,8 +1479,12 @@ function saveWorld() {
   saveDirty = false;
 }
 
-setInterval(() => { if (inWorld && saveDirty) saveWorld(); }, 8000);
-window.addEventListener('beforeunload', () => { if (inWorld) saveWorld(); });
+// el invitado guarda su inventario en su navegador, ligado a la semilla del mundo del anfitrión
+function savePlayerStash() {
+  if (isGuest && inWorld) lsSet('tm_ginv_' + SEED, { inv, hotbarMats });
+}
+setInterval(() => { if (inWorld && saveDirty) { saveWorld(); savePlayerStash(); saveDirty = false; } }, 8000);
+window.addEventListener('beforeunload', () => { if (inWorld) { saveWorld(); savePlayerStash(); } });
 
 /* ============================================================
    FLUJO DE PARTIDA
@@ -1230,6 +1504,17 @@ function startWorld(meta, data, mode) {
   currentWorld = isGuest ? null : meta;
   worldDisplayName = meta.name || 'Tierra Media';
 
+  // inventario, cinturón y cofres
+  chests.clear();
+  if (data?.chests) for (const [k, c] of Object.entries(data.chests)) chests.set(k, c);
+  if (!data) chests.set('22,22,10', { [B.MITHRIL]: 3 });   // el regalo del agujero hobbit
+  const stash = isGuest ? lsGet('tm_ginv_' + SEED, null) : data;
+  inv = Object.assign({}, stash?.inv ?? { [B.PLANK]: 16 });
+  hotbarMats = Array.isArray(stash?.hotbarMats) && stash.hotbarMats.length === NMAT
+    ? [...stash.hotbarMats] : [B.PLANK, null, null, null];
+  invOpen = false; openChestKey = null; invSelSlot = 0;
+  refreshHotbar();
+
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) genChunk(dx, dz);
 
   const p = data?.player;
@@ -1246,7 +1531,7 @@ function startWorld(meta, data, mode) {
 }
 
 function exitWorld() {
-  if (inWorld) saveWorld();
+  if (inWorld) { saveWorld(); savePlayerStash(); }
   shutdownNet();
   inWorld = false; currentWorld = null; worldDisplayName = '';
   resetWorld();
@@ -1262,10 +1547,12 @@ let menuScreen = 'main', worldsMode = 'sp';
 function showScreen(s) {
   menuScreen = s;
   $('menu').style.display = s ? 'flex' : 'none';
-  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause'])
+  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest'])
     $(id).style.display = (id === 'scr-' + s) ? 'flex' : 'none';
   if (s === 'pause') refreshPause();
   if (s === 'worlds') renderWorldList();
+  if (s === 'inv') renderInv();
+  if (s === 'chest') renderChest();
 }
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -1382,26 +1669,203 @@ function toast(text) {
   toastTimer = setTimeout(() => toastEl.style.opacity = 0, 1600);
 }
 
+function drawToolIcon(g, key) {
+  g.clearRect(0, 0, 32, 32);
+  g.lineCap = 'round';
+  if (key === 'hand') {
+    g.fillStyle = '#e3b58c';
+    g.fillRect(10, 12, 12, 12);
+    g.fillRect(7, 14, 4, 6);
+    for (let i = 0; i < 4; i++) g.fillRect(11 + i * 3, 6, 2, 7);
+  } else if (key === 'pick') {
+    g.strokeStyle = '#8a5a2b'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(9, 24); g.lineTo(22, 11); g.stroke();
+    g.strokeStyle = '#aab2ba'; g.lineWidth = 4;
+    g.beginPath(); g.arc(15, 21, 13, Math.PI * 1.28, Math.PI * 1.92); g.stroke();
+  } else if (key === 'shovel') {
+    g.strokeStyle = '#8a5a2b'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(16, 4); g.lineTo(16, 18); g.stroke();
+    g.fillStyle = '#aab2ba';
+    g.beginPath(); g.moveTo(11, 17); g.lineTo(21, 17); g.lineTo(21, 24);
+    g.quadraticCurveTo(16, 30, 11, 24); g.closePath(); g.fill();
+  } else if (key === 'axe') {
+    g.strokeStyle = '#8a5a2b'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(19, 28); g.lineTo(13, 10); g.stroke();
+    g.fillStyle = '#aab2ba';
+    g.beginPath(); g.moveTo(10, 13); g.quadraticCurveTo(5, 6, 14, 4);
+    g.quadraticCurveTo(21, 3, 23, 8); g.lineTo(14, 14); g.closePath(); g.fill();
+  } else if (key === 'bucket') {
+    g.strokeStyle = '#777e86'; g.lineWidth = 2;
+    g.beginPath(); g.arc(16, 12, 7, Math.PI, 0); g.stroke();
+    g.fillStyle = '#9aa2ab';
+    g.beginPath(); g.moveTo(8, 13); g.lineTo(24, 13); g.lineTo(21, 27); g.lineTo(11, 27); g.closePath(); g.fill();
+    g.fillStyle = '#5d646b'; g.fillRect(8, 12, 16, 3);
+  }
+}
+function drawMatIcon(g, id) {
+  g.clearRect(0, 0, 32, 32);
+  if (id == null) return;
+  g.imageSmoothingEnabled = false;
+  const t = TILE_MAP[id];
+  const tile = t.all !== undefined ? t.all : t.side;
+  g.drawImage(atlasCanvas, (tile % ACOLS) * T, ((tile / ACOLS) | 0) * T, T, T, 0, 0, 32, 32);
+}
+
 const hotbarEl = $('hotbar');
-HOTBAR.forEach((id, i) => {
+const hotbarSlots = [];
+for (let i = 0; i < TOOLS.length + NMAT; i++) {
   const slot = document.createElement('div');
   slot.className = 'slot' + (i === 0 ? ' sel' : '');
   const ic = document.createElement('canvas');
   ic.width = ic.height = 32;
-  const g = ic.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  const tile = TILE_MAP[id].all !== undefined ? TILE_MAP[id].all : TILE_MAP[id].side;
-  g.drawImage(atlasCanvas, (tile % ACOLS) * T, ((tile / ACOLS) | 0) * T, T, T, 0, 0, 32, 32);
   const num = document.createElement('div');
   num.className = 'num'; num.textContent = i + 1;
   slot.appendChild(ic); slot.appendChild(num);
+  if (i >= TOOLS.length) {
+    const cnt = document.createElement('div');
+    cnt.className = 'cnt';
+    slot.appendChild(cnt);
+  } else {
+    drawToolIcon(ic.getContext('2d'), TOOLS[i].k);
+    slot.title = TOOLS[i].name;
+  }
   hotbarEl.appendChild(slot);
-});
+  hotbarSlots.push(slot);
+}
+function refreshHotbar() {
+  for (let j = 0; j < NMAT; j++) {
+    const slot = hotbarSlots[TOOLS.length + j];
+    const mat = hotbarMats[j];
+    drawMatIcon(slot.firstElementChild.getContext('2d'), mat);
+    const n = mat != null ? (inv[mat] || 0) : 0;
+    slot.querySelector('.cnt').textContent = mat != null ? n : '';
+    slot.classList.toggle('empty', mat == null || n === 0);
+    slot.title = mat != null ? NAMES[mat] : 'Hueco vacío (E)';
+  }
+}
 function selectSlot(i) {
   sel = i;
-  [...hotbarEl.children].forEach((s, j) => s.classList.toggle('sel', j === i));
-  toast(NAMES[HOTBAR[i]]);
+  hotbarSlots.forEach((s, j) => s.classList.toggle('sel', j === i));
+  if (i < TOOLS.length) toast(TOOLS[i].name);
+  else {
+    const mat = hotbarMats[i - TOOLS.length];
+    toast(mat != null ? NAMES[mat] + ' ×' + (inv[mat] || 0) : 'Hueco vacío — pulsa E para asignar un material');
+  }
 }
+
+/* ----- pantalla de inventario y cofres ----- */
+let invOpen = false, openChestKey = null, invSelSlot = 0;
+
+function makeIslot(id, count, onclick) {
+  const d = document.createElement('div');
+  d.className = 'islot';
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  drawMatIcon(c.getContext('2d'), id);
+  d.appendChild(c);
+  if (count != null) {
+    const n = document.createElement('div');
+    n.className = 'cnt'; n.textContent = count;
+    d.appendChild(n);
+  }
+  if (id != null) d.title = NAMES[id];
+  if (onclick) d.onclick = onclick;
+  return d;
+}
+
+function renderInv() {
+  const belt = $('belt');
+  belt.innerHTML = '';
+  for (let j = 0; j < NMAT; j++) {
+    const mat = hotbarMats[j];
+    const s = makeIslot(mat, mat != null ? (inv[mat] || 0) : null, () => { invSelSlot = j; renderInv(); });
+    if (j === invSelSlot) s.classList.add('sel');
+    belt.appendChild(s);
+  }
+  const grid = $('invgrid');
+  grid.innerHTML = '';
+  let any = false;
+  for (const id of MATERIALS) {
+    if (!(inv[id] > 0)) continue;
+    any = true;
+    grid.appendChild(makeIslot(id, inv[id], () => {
+      hotbarMats[invSelSlot] = id;
+      saveDirty = true; refreshHotbar(); renderInv();
+      toast(NAMES[id] + ' → hueco ' + (TOOLS.length + invSelSlot + 1));
+    }));
+  }
+  if (!any) grid.innerHTML = '<div class="empty">Aún no tienes materiales — mantén el clic izquierdo sobre un bloque para picarlo.</div>';
+
+  const craft = $('craft');
+  craft.innerHTML = '';
+  const recipes = [
+    { label: '1 tronco → 4 tablones', can: (inv[B.LOG] > 0 || inv[B.MLOG] > 0),
+      go: () => { if (inv[B.LOG] > 0) removeInv(B.LOG, 1); else removeInv(B.MLOG, 1); addInv(B.PLANK, 4); toast('+4 Tablones'); } },
+    { label: '8 tablones → 1 cofre', can: inv[B.PLANK] >= 8,
+      go: () => { removeInv(B.PLANK, 8); addInv(B.CHEST, 1); toast('+1 Cofre  (colócalo y clic derecho para abrirlo)'); } },
+  ];
+  for (const r of recipes) {
+    const row = document.createElement('div');
+    row.className = 'craftrow';
+    const btn = document.createElement('button');
+    btn.className = 'mbtn small';
+    btn.textContent = 'Fabricar';
+    btn.disabled = !r.can;
+    btn.style.opacity = r.can ? 1 : 0.4;
+    btn.onclick = () => { if (r.can) { r.go(); renderInv(); } };
+    const lbl = document.createElement('span');
+    lbl.textContent = r.label;
+    row.append(btn, lbl);
+    craft.appendChild(row);
+  }
+}
+
+function openChest(k) {
+  if (!chests.has(k)) { chests.set(k, {}); if (!isGuest) saveDirty = true; }
+  openChestKey = k;
+  document.exitPointerLock();
+}
+
+function renderChest() {
+  if (!openChestKey) return;
+  const c = chests.get(openChestKey) || {};
+  const grid = $('chestgrid');
+  grid.innerHTML = '';
+  let any = false;
+  for (const [idStr, n] of Object.entries(c)) {
+    if (!(n > 0)) continue;
+    any = true;
+    const id = +idStr;
+    grid.appendChild(makeIslot(id, n, ev => {
+      const take = ev.shiftKey ? 1 : n;
+      c[id] -= take; if (c[id] <= 0) delete c[id];
+      addInv(id, take);
+      broadcastChest(openChestKey, c);
+      renderChest();
+    }));
+  }
+  if (!any) grid.innerHTML = '<div class="empty">Vacío</div>';
+  const mine = $('chestinv');
+  mine.innerHTML = '';
+  let anyMine = false;
+  for (const id of MATERIALS) {
+    if (!(inv[id] > 0)) continue;
+    anyMine = true;
+    mine.appendChild(makeIslot(id, inv[id], ev => {
+      const put = ev.shiftKey ? 1 : inv[id];
+      removeInv(id, put);
+      c[id] = (c[id] || 0) + put;
+      chests.set(openChestKey, c);
+      broadcastChest(openChestKey, c);
+      renderChest();
+    }));
+  }
+  if (!anyMine) mine.innerHTML = '<div class="empty">Nada que guardar</div>';
+}
+
+$('btn-clearslot').onclick = () => { hotbarMats[invSelSlot] = null; saveDirty = true; refreshHotbar(); renderInv(); };
+$('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.requestPointerLock(); };
+$('btn-chest-close').onclick = () => { openChestKey = null; if (inWorld) canvas.requestPointerLock(); };
 
 function updateNetInfo() {
   const el = $('netinfo');
@@ -1430,8 +1894,13 @@ let heldBtn = null, heldT = 0;
 
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (locked) showScreen(null);
-  else if (inWorld) { showScreen('pause'); saveWorld(); }
+  digState = null; hideDigbar();
+  if (locked) { invOpen = false; openChestKey = null; showScreen(null); }
+  else if (inWorld) {
+    if (openChestKey) showScreen('chest');
+    else if (invOpen) showScreen('inv');
+    else { showScreen('pause'); saveWorld(); savePlayerStash(); }
+  }
   keys.clear(); heldBtn = null;
 });
 document.addEventListener('mousemove', e => {
@@ -1444,6 +1913,11 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Space' && locked) e.preventDefault();
   keys.add(e.code);
   if (e.code === 'KeyR' && locked) respawn();
+  if (e.code === 'KeyE' && inWorld) {
+    if (locked) { invOpen = true; document.exitPointerLock(); }
+    else if (invOpen) { invOpen = false; canvas.requestPointerLock(); }
+    else if (openChestKey) { openChestKey = null; canvas.requestPointerLock(); }
+  }
   if (locked && e.code.startsWith('Digit')) {
     const n = +e.code.slice(5);
     if (n >= 1 && n <= 9) selectSlot(n - 1);
@@ -1454,10 +1928,11 @@ window.addEventListener('blur', () => keys.clear());
 document.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('mousedown', e => {
   if (!locked) return;
-  doAction(e.button);
   heldBtn = e.button; heldT = performance.now();
+  if (e.button === 2) tryPlace(true);
+  if (e.button === 0) digState = null;
 });
-document.addEventListener('mouseup', () => heldBtn = null);
+document.addEventListener('mouseup', () => { heldBtn = null; digState = null; hideDigbar(); });
 document.addEventListener('wheel', e => {
   if (!locked) return;
   selectSlot((sel + (e.deltaY > 0 ? 1 : -1) + 9) % 9);
@@ -1522,8 +1997,10 @@ function loop(now) {
     updateChunks();
     if (locked) {
       physics(dt);
-      if (heldBtn !== null && now - heldT > 240) { doAction(heldBtn); heldT = now; }
+      if (heldBtn === 0) updateDig(dt, now);
+      else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
+    if (!isGuest) processReacts(now);
     updateAvatars(dt);
     updateHUD(now);
   }
@@ -1545,12 +2022,16 @@ showScreen('main');
 
 // utilidades de depuración
 window.G = {
-  player, chunks, avatars,
+  player, chunks, avatars, chests,
   tp(x, y, z) { player.x = x; player.y = y; player.z = z; player.vx = player.vy = player.vz = 0; },
   look(y, p) { yaw = y; pitch = p; },
   setDay(t) { dayT = t; },
-  setBlock: playerSetBlock, getBlock: worldGetBlock, raycast, doAction,
+  setBlock: playerSetBlock, getBlock: worldGetBlock, raycast,
   saveNow: saveWorld, exitWorld, hostGame, joinGame,
+  inv: () => ({ ...inv }), give(id, n) { addInv(id, n ?? 1); },
+  breakAt(x, y, z) { completeBreak({ x, y, z, id: worldGetBlock(x, y, z) }); },
+  openChest, renderInv, showScreen, selectSlot, tryPlace,
+  reacts: () => reactQueue.length,
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
 };
 </script>
