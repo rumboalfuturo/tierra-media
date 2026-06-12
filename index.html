@@ -454,7 +454,15 @@ let inv = {};                                  // id -> cantidad
 let hotbarMats = [B.PLANK, null, null, null];  // huecos 6-9
 const chests = new Map();                      // "x,y,z" -> { id: cantidad }
 
-function addInv(id, n = 1) { inv[id] = (inv[id] || 0) + n; saveDirty = true; refreshHotbar(); }
+function addInv(id, n = 1) {
+  inv[id] = (inv[id] || 0) + n;
+  // material nuevo → directo al primer hueco libre del cinturón
+  if (!hotbarMats.includes(id)) {
+    const free = hotbarMats.indexOf(null);
+    if (free !== -1) hotbarMats[free] = id;
+  }
+  saveDirty = true; refreshHotbar();
+}
 function removeInv(id, n = 1) {
   inv[id] = Math.max(0, (inv[id] || 0) - n);
   if (!inv[id]) delete inv[id];
