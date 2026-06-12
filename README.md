@@ -25,11 +25,12 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 | W A S D | moverte |
 | Espacio | saltar / nadar |
 | Shift | correr |
-| Mantener clic izq | picar el bloque (barra de progreso) |
+| Clic izquierdo | un golpe por clic (mantén pulsado para golpear seguido) |
 | Clic derecho | colocar material / abrir cofre |
 | 1–5 | herramientas: mano, pico, pala, hacha, cubo |
 | 6–9 | huecos de materiales |
 | E | inventario y fabricación |
+| M | mapa de la Tierra Media |
 | R | volver a La Comarca |
 | Esc | menú |
 
@@ -46,16 +47,20 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 - El **agua enfría la lava** y la convierte en piedra.
 - El fuego se puede apagar de un golpe de clic.
 
-## El mundo
+## El mapa de la Tierra Media
 
-- **La Comarca** — colinas verdes y robles; hay un agujero hobbit cerca del punto de aparición (con un regalo dentro).
-- **Lothlórien** — bosques de mallorn con copas doradas.
-- **Montañas Nubladas** — picos de roca con cumbres nevadas.
-- **Mordor** — roca negra, lagos de lava, niebla rojiza y **Barad-dûr** con el Ojo ardiente en lo alto (al sureste del spawn).
-- Bajo tierra hay **mithril** si excavas.
-- Ciclo completo de día y noche (5 minutos).
+Pulsa **M** para ver el mapa con tu posición. Los lugares famosos están construidos en el mundo, dispuestos como en el mapa real (el este queda a +x y el sur a +z):
 
-El mundo es procedural e "infinito": se generan chunks nuevos al explorar.
+- **La Comarca** — el punto de aparición, con su agujero hobbit (y un cofre con regalo).
+- **Moria** — las Puertas de Durin en la cara oeste de las **Montañas Nubladas** (una cordillera norte–sur de cumbres nevadas); dentro, la sala de pilares de Khazad-dûm y una grieta de lava.
+- **Isengard** — el anillo de roca con fosas ardientes y la torre negra de **Orthanc**.
+- **El Abismo de Helm** — el Muro del Bajo con almenas (y su alcantarilla), Cuernavilla y la montaña a su espalda.
+- **Minas Tirith** — la ciudad blanca de siete niveles con la Torre de Ecthelion, sobre los campos del Pelennor.
+- **Mordor** — al sureste: roca negra, lagos de lava, niebla rojiza y **Barad-dûr** con el Ojo ardiente.
+- Al romper un bloque, el material **cae al suelo** junto al agujero: acércate y lo recoges solo.
+- Bajo tierra hay **mithril** si excavas. Ciclo completo de día y noche (5 minutos).
+
+El mundo es procedural e "infinito": se generan chunks nuevos al explorar. Cada mundo tiene un terreno distinto, pero los monumentos están siempre en su sitio.
 
 ## Ejecutar en local
 

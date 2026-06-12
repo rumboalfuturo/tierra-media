@@ -167,8 +167,8 @@
       <button class="mbtn" id="btn-join">🔑 &nbsp;Unirse con código</button>
     </div>
     <div class="hint">
-      W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · mantén clic izq para picar · clic der colocar<br>
-      1–5 herramientas · 6–9 materiales · E inventario y fabricación · R volver a La Comarca · ESC menú
+      W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · clic izq golpear (cada clic, un golpe) · clic der colocar<br>
+      1–5 herramientas · 6–9 materiales · E inventario · M mapa de la Tierra Media · R volver a La Comarca · ESC menú
     </div>
   </div>
 
@@ -221,6 +221,15 @@
     </div>
   </div>
 
+  <div class="screen" id="scr-map">
+    <h2>LA TIERRA MEDIA</h2>
+    <div class="panel" style="max-width:620px;">
+      <canvas id="mapcanvas" width="560" height="560" style="width:100%; image-rendering:pixelated; border-radius:6px; border:1px solid rgba(190,160,90,.4);"></canvas>
+      <div class="hint">Tú eres el punto rojo · tus compañeros, puntos verdes</div>
+      <button class="mbtn small" id="btn-map-close">▶ Volver al juego (M)</button>
+    </div>
+  </div>
+
   <div class="screen" id="scr-pause">
     <h2 id="pause-title"></h2>
     <div id="pause-net"></div>
@@ -230,7 +239,7 @@
       <button class="mbtn small" id="btn-copy" style="display:none;">📋 Copiar código</button>
       <button class="mbtn small" id="btn-exit">💾 Guardar y salir al menú</button>
     </div>
-    <div class="hint">W A S D · ESPACIO · SHIFT correr · mantén clic izq: picar · clic der: colocar · E: inventario · R: spawn</div>
+    <div class="hint">W A S D · ESPACIO · SHIFT correr · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · R: spawn</div>
   </div>
 
 </div>
@@ -255,15 +264,21 @@ const CH = 16;              // tamaño de chunk en XZ
 const WH = 64;              // altura del mundo
 const RD = 5;               // distancia de renderizado en chunks
 const WATER_Y = 16;
-const SPAWN = { x: 8.5, z: 8.5 };
-const TOWER = { x: 75, z: 75 };   // Barad-dûr
-const HOUSE = { x: 20, z: 10 };   // agujero hobbit
+// el mapa de la Tierra Media (x crece hacia el este, z hacia el sur)
+const SPAWN = { x: 8.5, z: 8.5 };          // La Comarca
+const HOUSE = { x: 20, z: 10 };            // agujero hobbit
+const MORIA = { x: 148, z: -30 };          // Puerta Oeste de Moria (en la cordillera)
+const RIDGE = { x: 170, zMax: 290 };       // eje de las Montañas Nubladas
+const ISEN  = { x: 105, z: 140 };          // Isengard / Orthanc
+const HELM  = { x: 30,  z: 190 };          // Abismo de Helm
+const MTIR  = { x: 230, z: 230 };          // Minas Tirith
+const TOWER = { x: 330, z: 290 };          // Mordor / Barad-dûr
 
 const B = {
   AIR:0, GRASS:1, DIRT:2, STONE:3, SNOW:4, LOG:5, LEAVES:6,
   MLOG:7, MLEAVES:8, MROCK:9, LAVA:10, WATER:11, SAND:12,
   MITHRIL:13, DBRICK:14, PLANK:15, COBBLE:16, BEDROCK:17,
-  CHEST:18, FIRE:19,
+  CHEST:18, FIRE:19, WSTONE:20,
 };
 const NAMES = {
   [B.GRASS]:'Hierba', [B.DIRT]:'Tierra', [B.STONE]:'Piedra', [B.SNOW]:'Nieve',
@@ -271,7 +286,7 @@ const NAMES = {
   [B.MLEAVES]:'Hojas de mallorn', [B.MROCK]:'Roca de Mordor', [B.LAVA]:'Lava',
   [B.WATER]:'Agua', [B.SAND]:'Arena', [B.MITHRIL]:'Mithril',
   [B.DBRICK]:'Ladrillo de Barad-dûr', [B.PLANK]:'Tablones', [B.COBBLE]:'Piedra labrada',
-  [B.BEDROCK]:'Roca madre', [B.CHEST]:'Cofre', [B.FIRE]:'Fuego',
+  [B.BEDROCK]:'Roca madre', [B.CHEST]:'Cofre', [B.FIRE]:'Fuego', [B.WSTONE]:'Piedra blanca',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -284,7 +299,7 @@ const TOOLS = [
 ];
 const NMAT = 4;
 // materiales que se pueden tener en el inventario
-const MATERIALS = [B.DIRT, B.COBBLE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
+const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
                    B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.CHEST, B.WATER, B.LAVA];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0 };
@@ -334,12 +349,20 @@ const lerp = (a, b, t) => a + (b - a) * t;
 ============================================================ */
 const biomeNoise = (wx, wz) => fbm(wx * 0.004, wz * 0.004, SEED + 5, 3);
 
+// cordillera de las Montañas Nubladas: banda norte-sur en x≈170
+const ridgeAt = (wx, wz) =>
+  smoothstep(30, 6, Math.abs(wx - RIDGE.x)) * smoothstep(RIDGE.zMax, RIDGE.zMax - 50, Math.abs(wz));
+
 function biomeAt(wx, wz) {
-  if (Math.hypot(wx - TOWER.x, wz - TOWER.z) < 40) return BIOME.MORDOR;
+  if (Math.hypot(wx - TOWER.x, wz - TOWER.z) < 60) return BIOME.MORDOR;
   if (Math.hypot(wx - SPAWN.x, wz - SPAWN.z) < 35) return BIOME.SHIRE;
+  if (Math.hypot(wx - MTIR.x, wz - MTIR.z) < 50)   return BIOME.SHIRE;   // los campos del Pelennor
+  if (Math.hypot(wx - ISEN.x, wz - ISEN.z) < 34)   return BIOME.SHIRE;
+  if (Math.hypot(wx - HELM.x, wz - 225) < 38)      return BIOME.MOUNTAIN; // la roca tras el Muro
+  if (ridgeAt(wx, wz) > 0.45) return BIOME.MOUNTAIN;
   const b = biomeNoise(wx, wz);
   if (b > 0.30)  return BIOME.MOUNTAIN;
-  if (b < -0.22) return BIOME.MORDOR;
+  if (b < -0.22) return (wx + wz > 420) ? BIOME.MORDOR : BIOME.SHIRE;   // las tierras oscuras solo al sureste
   if (b > 0.13)  return BIOME.LOTHLORIEN;
   return BIOME.SHIRE;
 }
@@ -347,19 +370,34 @@ function biomeAt(wx, wz) {
 function heightAt(wx, wz) {
   let h = 20 + fbm(wx * 0.012, wz * 0.012, SEED + 1, 4) * 5.5;
   const b = biomeNoise(wx, wz);
-  const m = smoothstep(0.30, 0.58, b);
+  let m = smoothstep(0.30, 0.58, b);
+  m = Math.max(m, ridgeAt(wx, wz) * 0.95);            // las Montañas Nubladas
   if (m > 0) {
     h += m * (16 + (fbm(wx * 0.02, wz * 0.02, SEED + 2, 4) * 0.5 + 0.5) * 20);
     h += m * fbm(wx * 0.055, wz * 0.055, SEED + 8, 3) * 7;   // crestas y rocas
   }
+  h += 26 * smoothstep(45, 10, Math.hypot(wx - HELM.x, wz - 225));   // la roca tras el Abismo de Helm
   if (biomeAt(wx, wz) === BIOME.MORDOR) {
     const p = fbm(wx * 0.03, wz * 0.03, SEED + 3, 3);
     if (p > 0.38) h = Math.min(h, 13.6);   // lagos de lava
   }
+  // explanadas de los emplazamientos
   const dS = Math.hypot(wx - SPAWN.x, wz - SPAWN.z);
   if (dS < 40) h = lerp(21.2, h, smoothstep(20, 40, dS));
   const dT = Math.hypot(wx - TOWER.x, wz - TOWER.z);
   if (dT < 45) h = lerp(22.2, h, smoothstep(25, 45, dT));
+  const dI = Math.hypot(wx - ISEN.x, wz - ISEN.z);
+  if (dI < 40) h = lerp(21.2, h, smoothstep(25, 40, dI));
+  const dM = Math.hypot(wx - MTIR.x, wz - MTIR.z);
+  if (dM < 55) h = lerp(21.2, h, smoothstep(36, 55, dM));
+  if (wz <= 190) {                                     // el valle frente al Muro del Bajo
+    const dH = Math.hypot(wx - HELM.x, wz - 188);
+    if (dH < 38) h = lerp(21.2, h, smoothstep(15, 38, dH));
+  }
+  if (wx <= 146) {                                     // la explanada ante la Puerta de Moria
+    const dD = Math.hypot(wx - 146, wz - MORIA.z);
+    if (dD < 26) h = lerp(21.5, h, smoothstep(12, 26, dD));
+  }
   return Math.max(2, Math.min(WH - 10, Math.floor(h)));
 }
 
@@ -599,6 +637,10 @@ function genTrees(data, cx, cz) {
     if (gh <= WATER_Y + 1 || gh >= 27) continue;
     if (Math.hypot(wx - SPAWN.x, wz - SPAWN.z) < 7) continue;
     if (Math.hypot(wx - HOUSE.x, wz - HOUSE.z) < 9) continue;
+    if (Math.hypot(wx - ISEN.x, wz - ISEN.z) < 34) continue;
+    if (Math.hypot(wx - MTIR.x, wz - MTIR.z) < 38) continue;
+    if (wx >= 0 && wx <= 60 && wz >= 170 && wz <= 210) continue;     // Abismo de Helm
+    if (wx >= 130 && wx <= 200 && wz >= -60 && wz <= 5) continue;    // Moria
     const r2 = hash2(wx, wz, SEED + 10);
 
     if (biome === BIOME.LOTHLORIEN) {
@@ -666,6 +708,71 @@ function genStructures(data, cx, cz) {
       if (Math.abs(hdz) === 1 && hdx === -4) { set(lx, ground + 1, lz, B.LOG); set(lx, ground + 2, lz, B.LOG); }
       if (Math.abs(hdz) <= 1 && hdx === -4) set(lx, ground + 3, lz, B.LOG);
       if (hdx === 2 && hdz === 0) set(lx, ground + 1, lz, B.CHEST);   // cofre con regalo
+    }
+
+    // --- Moria: túnel, Puertas de Durin y la sala de Khazad-dûm ---
+    if (wx >= 136 && wx <= 196 && wz >= -60 && wz <= 0) {
+      if (wx >= 150 && wx <= 192 && wz >= -54 && wz <= -6 && heightAt(wx, wz) > 34) {
+        for (let y = 22; y <= 29; y++) set(lx, y, lz, B.AIR);          // la gran sala
+        set(lx, 21, lz, B.STONE);
+        if (((wx - 154) % 10 + 10) % 10 < 2 && ((wz + 50) % 10 + 10) % 10 < 2)
+          for (let y = 22; y <= 29; y++) set(lx, y, lz, B.COBBLE);     // pilares
+        if (wx >= 189) set(lx, 21, lz, B.LAVA);                        // la grieta del Balrog
+      }
+      if (wz >= -31 && wz <= -29 && wx >= 138 && wx <= 160) {          // túnel de entrada
+        for (let y = 22; y <= 26; y++) set(lx, y, lz, B.AIR);
+        set(lx, 21, lz, B.STONE);
+      }
+      if (wx === 140 && wz >= -33 && wz <= -27) {                      // las Puertas de Durin
+        if (wz === -33 || wz === -27) for (let y = 22; y <= 27; y++) set(lx, y, lz, B.DBRICK);
+        set(lx, 28, lz, B.DBRICK);
+        if (wz === -30) set(lx, 29, lz, B.MITHRIL);
+      }
+    }
+
+    // --- Isengard: anillo, suelo calcinado y Orthanc ---
+    const idx = wx - ISEN.x, idz = wz - ISEN.z, idd = Math.hypot(idx, idz);
+    if (idd <= 30) {
+      set(lx, 21, lz, B.MROCK);
+      if (idd < 24 && hash2(wx, wz, SEED + 21) < 0.008) set(lx, 21, lz, B.LAVA);   // fosas de las máquinas
+      if (idd >= 26 && idd <= 28 && !(idz < 0 && Math.abs(idx) <= 2)) {            // muralla con puerta al norte
+        const top = 27 + ((wx + wz) & 1);
+        for (let y = 22; y <= top; y++) set(lx, y, lz, B.MROCK);
+      }
+      if (Math.abs(idx) <= 3 && Math.abs(idz) <= 3) {                              // Orthanc
+        const horn = Math.abs(idx) === 3 && Math.abs(idz) === 3;
+        for (let y = 22; y <= (horn ? 54 : 50); y++) set(lx, y, lz, B.DBRICK);
+      }
+    }
+
+    // --- El Abismo de Helm: el Muro del Bajo y Cuernavilla ---
+    if (wx >= 8 && wx <= 52 && wz >= 188 && wz <= 191) {
+      for (let y = 22; y <= 29; y++) set(lx, y, lz, B.COBBLE);
+      if (((wx & 1) === 0) && wz === 188) set(lx, 30, lz, B.COBBLE);   // almenas
+      if (wx >= 29 && wx <= 31) { set(lx, 22, lz, B.AIR); set(lx, 23, lz, B.AIR); }  // la alcantarilla
+    }
+    const hkd = Math.hypot(wx - 14, wz - 197);
+    if (hkd <= 5) for (let y = 22; y <= (hkd <= 2 ? 38 : 33 + ((wx + wz) & 1)); y++) set(lx, y, lz, B.COBBLE);
+    const hkd2 = Math.hypot(wx - 48, wz - 195);
+    if (hkd2 <= 3) for (let y = 22; y <= 30 + ((wx + wz) & 1); y++) set(lx, y, lz, B.COBBLE);
+
+    // --- Minas Tirith: siete niveles blancos y la Torre de Ecthelion ---
+    const mdx = wx - MTIR.x, mdz = wz - MTIR.z, md = Math.hypot(mdx, mdz);
+    if (md <= 32.5) {
+      const gate = Math.abs(mdx) <= 1 && mdz > 2;                      // corredor de entrada al sur
+      if (gate) {
+        const ramp = Math.min(42, Math.round(22 + (32 - md) * 0.78));
+        for (let y = 22; y <= ramp; y++) set(lx, y, lz, B.WSTONE);
+      } else {
+        const tier = Math.min(6, Math.floor((32.5 - md) / 4.5));
+        const g = 24 + tier * 3;
+        for (let y = 22; y <= g; y++) set(lx, y, lz, B.WSTONE);
+        if (((32.5 - md) % 4.5) < 1.3 && md > 4) {                     // muralla de cada anillo
+          for (let y = g; y <= g + 3 + ((wx + wz) & 1); y++) set(lx, y, lz, B.WSTONE);
+        }
+      }
+      if (md <= 2.6) for (let y = 42; y <= 57; y++) set(lx, y, lz, B.WSTONE);   // la Torre Blanca
+      if (md <= 1.2) { set(lx, 58, lz, B.WSTONE); set(lx, 59, lz, B.MITHRIL); }
     }
   }
 }
@@ -801,6 +908,15 @@ const TILE_PAINTERS = [
       actx.fillRect(ox + ((rng() * 13) | 0), oy + 13 + ((rng() * 2) | 0), 3, 2);
     }
   },
+  /* 22 white_stone */ (ox, oy, rng) => {
+    speckle(ox, oy, [222, 219, 208], 0.05, rng);
+    actx.fillStyle = 'rgba(180,176,162,.7)';
+    for (let row = 0; row < 4; row++) {
+      const off = (row % 2) * 4;
+      actx.fillRect(ox, oy + row * 4 + 3, T, 1);
+      for (let col = 0; col < 3; col++) actx.fillRect(ox + ((off + col * 8) % 16), oy + row * 4, 1, 4);
+    }
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -826,6 +942,7 @@ const TILE_MAP = {
   [B.BEDROCK]: { all: 18 },
   [B.CHEST]:   { top: 20, bottom: 20, side: 19 },
   [B.FIRE]:    { all: 21 },
+  [B.WSTONE]:  { all: 22 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1024,6 +1141,7 @@ function resetWorld() {
   chunks.clear(); dirty.clear(); editsByChunk.clear();
   genQueue = []; lastPC = null;
   reactQueue.length = 0;
+  clearDrops();
   for (const id of [...avatars.keys()]) removeAvatar(id);
 }
 
@@ -1135,14 +1253,15 @@ let digState = null, lastBucket = 0;
 const digbarEl = () => $('digbar');
 const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
 
-function digTime(id, tool) {
+// golpes necesarios por bloque: cada clic es un golpe
+function hitsFor(id, tool) {
   let base, match;
-  if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW) { base = 0.8; match = 'shovel'; }
-  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST) { base = 1.5; match = 'axe'; }
-  else if (id === B.LEAVES || id === B.MLEAVES) { base = 0.4; match = 'axe'; }
-  else if (id === B.MITHRIL) { base = 3.2; match = 'pick'; }
-  else { base = 2.4; match = 'pick'; }   // piedra y similares
-  return tool === match ? base * 0.25 : base;
+  if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW) { base = 2; match = 'shovel'; }
+  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST) { base = 4; match = 'axe'; }
+  else if (id === B.LEAVES || id === B.MLEAVES) { return 1; }
+  else if (id === B.MITHRIL) { base = 9; match = 'pick'; }
+  else { base = 6; match = 'pick'; }   // piedra y similares
+  return tool === match ? Math.max(1, Math.round(base / 3)) : base;
 }
 function hideDigbar() { digbarEl().style.display = 'none'; }
 function showDigbar(p) {
@@ -1151,23 +1270,94 @@ function showDigbar(p) {
   el.firstElementChild.style.width = Math.min(100, p * 100) + '%';
 }
 
+/* ----- objetos sueltos por el suelo (drops) ----- */
+const drops = [];
+const dropGeos = new Map();
+function dropGeo(id) {
+  if (dropGeos.has(id)) return dropGeos.get(id);
+  const pos = [], nor = [], uv = [], idx = [];
+  const S = 0.28;
+  for (let f = 0; f < 6; f++) {
+    const face = FACES[f];
+    const tile = tileFor(id, f);
+    const tx = tile % ACOLS, ty = (tile / ACOLS) | 0;
+    const base = pos.length / 3;
+    for (const c of face.corners) {
+      pos.push((c[0] - 0.5) * S, (c[1] - 0.5) * S, (c[2] - 0.5) * S);
+      nor.push(face.dir[0], face.dir[1], face.dir[2]);
+      uv.push((tx + UV_E + c[3] * (1 - 2 * UV_E)) / ACOLS,
+              ((AROWS - 1 - ty) + UV_E + c[4] * (1 - 2 * UV_E)) / AROWS);
+    }
+    idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal',   new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv',       new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  dropGeos.set(id, g);
+  return g;
+}
+function spawnDrop(x, y, z, id, n) {
+  if (!id || !n) return;
+  if (drops.length >= 80) removeDrop(0);
+  const mesh = new THREE.Mesh(dropGeo(id), matSolid);
+  mesh.position.set(x, y, z);
+  scene.add(mesh);
+  drops.push({ id, n, mesh, vy: 0.5, born: performance.now(), rest: false });
+}
+function removeDrop(i) {
+  scene.remove(drops[i].mesh);
+  drops.splice(i, 1);
+}
+function clearDrops() { while (drops.length) removeDrop(0); }
+function updateDrops(dt, now) {
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
+    const p = d.mesh.position;
+    d.mesh.rotation.y += dt * 1.6;
+    if (d.rest && !isSolid(blockAtF(p.x, p.y - 0.2, p.z))) d.rest = false;   // le han quitado el suelo
+    if (!d.rest) {
+      d.vy -= 16 * dt;
+      p.y += d.vy * dt;
+      if (isSolid(blockAtF(p.x, p.y - 0.16, p.z))) {
+        p.y = Math.floor(p.y - 0.16) + 1.18;
+        d.vy = 0; d.rest = true;
+      }
+      if (p.y < -10) { removeDrop(i); continue; }
+    }
+    if (now - d.born > 90000) { removeDrop(i); continue; }
+    if (now - d.born > 400) {                                  // recoger al acercarse
+      const dx = player.x - p.x, dy = (player.y + 0.7) - p.y, dz = player.z - p.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist < 0.9) { addInv(d.id, d.n); toast('+' + d.n + ' ' + NAMES[d.id]); removeDrop(i); continue; }
+      if (dist < 2.2) {                                        // efecto imán
+        const f = 5 * dt / Math.max(dist, 0.3);
+        p.x += dx * f; p.y += dy * f; p.z += dz * f;
+        d.rest = false;
+      }
+    }
+  }
+}
+
 function completeBreak(hit) {
   const k = hit.x + ',' + hit.y + ',' + hit.z;
+  const cx = hit.x + 0.5, cy = hit.y + 0.55, cz = hit.z + 0.5;
   if (hit.id === B.CHEST) {
     const c = chests.get(k);
-    if (c) {
-      let got = 0;
-      for (const [id, n] of Object.entries(c)) { addInv(+id, n); got += n; }
-      if (got) toast('Recoges el cofre y ' + got + ' materiales de dentro');
-    }
+    if (c) for (const [id, n] of Object.entries(c))
+      spawnDrop(cx + (Math.random() - 0.5) * 0.4, cy, cz + (Math.random() - 0.5) * 0.4, +id, n);
     chests.delete(k); broadcastChest(k, null);
   }
   const drop = DROPS[hit.id] !== undefined ? DROPS[hit.id] : hit.id;
-  if (drop) addInv(drop);
+  if (drop) spawnDrop(cx, cy, cz, drop, 1);
   playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
 }
 
-function updateDig(dt, now) {
+// un golpe por clic (manteniendo pulsado, golpea solo)
+let lastSwing = 0;
+function swing(now) {
+  lastSwing = now;
   if (currentTool() === 'bucket') {
     digState = null; hideDigbar();
     const hit = raycast(6, { fluids: true, fire: false });
@@ -1184,10 +1374,10 @@ function updateDig(dt, now) {
   if (hit.id === B.FIRE) { playerSetBlock(hit.x, hit.y, hit.z, B.AIR); digState = null; return; }  // apagar fuego
   if (hit.id === B.BEDROCK) { digState = null; hideDigbar(); return; }
   const key = hit.x + ',' + hit.y + ',' + hit.z;
-  if (!digState || digState.key !== key) digState = { key, p: 0 };
-  digState.p += dt / digTime(hit.id, currentTool());
-  showDigbar(digState.p);
-  if (digState.p >= 1) { completeBreak(hit); digState = null; hideDigbar(); }
+  if (!digState || digState.key !== key) digState = { key, hits: 0, need: hitsFor(hit.id, currentTool()) };
+  digState.hits++;
+  if (digState.hits >= digState.need) { completeBreak(hit); digState = null; hideDigbar(); }
+  else showDigbar(digState.hits / digState.need);
 }
 
 function tryPlace(initial) {
@@ -1547,12 +1737,13 @@ let menuScreen = 'main', worldsMode = 'sp';
 function showScreen(s) {
   menuScreen = s;
   $('menu').style.display = s ? 'flex' : 'none';
-  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest'])
+  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map'])
     $(id).style.display = (id === 'scr-' + s) ? 'flex' : 'none';
   if (s === 'pause') refreshPause();
   if (s === 'worlds') renderWorldList();
   if (s === 'inv') renderInv();
   if (s === 'chest') renderChest();
+  if (s === 'map') renderMap();
 }
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -1863,6 +2054,65 @@ function renderChest() {
   if (!anyMine) mine.innerHTML = '<div class="empty">Nada que guardar</div>';
 }
 
+/* ----- el mapa de la Tierra Media (tecla M) ----- */
+let mapOpen = false, mapCache = null, mapCacheSeed = null;
+const MAPB = { x0: -90, z0: -150, x1: 430, z1: 370 };
+const MARKERS = [
+  { x: 8,   z: 8,    n: 'La Comarca' },
+  { x: 148, z: -30,  n: 'Moria' },
+  { x: 170, z: -120, n: 'Montañas Nubladas' },
+  { x: 105, z: 140,  n: 'Isengard' },
+  { x: 30,  z: 192,  n: 'Abismo de Helm' },
+  { x: 230, z: 230,  n: 'Minas Tirith' },
+  { x: 330, z: 290,  n: 'Barad-dûr' },
+];
+function renderMap() {
+  const cv = $('mapcanvas'), g = cv.getContext('2d');
+  const sx = cv.width / (MAPB.x1 - MAPB.x0), sz = cv.height / (MAPB.z1 - MAPB.z0);
+  if (!mapCache || mapCacheSeed !== SEED) {
+    mapCache = document.createElement('canvas');
+    mapCache.width = cv.width; mapCache.height = cv.height;
+    const mg = mapCache.getContext('2d');
+    const step = 4;
+    for (let wz = MAPB.z0; wz < MAPB.z1; wz += step) for (let wx = MAPB.x0; wx < MAPB.x1; wx += step) {
+      const b = biomeAt(wx, wz), h = heightAt(wx, wz);
+      let c;
+      if (h < WATER_Y) c = b === BIOME.MORDOR ? [185, 62, 18] : [50, 98, 178];
+      else {
+        if (b === BIOME.MORDOR) c = [60, 48, 54];
+        else if (b === BIOME.MOUNTAIN || h >= 27) c = h >= 34 ? [226, 232, 238] : [134, 138, 143];
+        else if (b === BIOME.LOTHLORIEN) c = [165, 142, 56];
+        else c = [94, 152, 72];
+        const f = 0.8 + (h - 18) * 0.012;
+        c = [c[0] * f, c[1] * f, c[2] * f];
+      }
+      mg.fillStyle = css(c[0], c[1], c[2]);
+      mg.fillRect((wx - MAPB.x0) * sx, (wz - MAPB.z0) * sz, step * sx + 1, step * sz + 1);
+    }
+    mg.font = 'italic 15px Georgia';
+    mg.textAlign = 'center';
+    for (const m of MARKERS) {
+      const px = (m.x - MAPB.x0) * sx, pz = (m.z - MAPB.z0) * sz;
+      mg.fillStyle = '#ffd86b';
+      mg.beginPath(); mg.arc(px, pz, 4, 0, 7); mg.fill();
+      mg.lineWidth = 4; mg.strokeStyle = 'rgba(0,0,0,.75)';
+      mg.strokeText(m.n, px, pz - 9);
+      mg.fillStyle = '#fff'; mg.fillText(m.n, px, pz - 9);
+    }
+    mapCacheSeed = SEED;
+  }
+  g.drawImage(mapCache, 0, 0);
+  for (const a of avatars.values()) {
+    const px = (a.group.position.x - MAPB.x0) * sx, pz = (a.group.position.z - MAPB.z0) * sz;
+    g.fillStyle = '#41d94c'; g.beginPath(); g.arc(px, pz, 5, 0, 7); g.fill();
+    g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
+  }
+  const px = (player.x - MAPB.x0) * sx, pz = (player.z - MAPB.z0) * sz;
+  g.fillStyle = '#ff3b30'; g.beginPath(); g.arc(px, pz, 6, 0, 7); g.fill();
+  g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
+}
+$('btn-map-close').onclick = () => { mapOpen = false; if (inWorld) canvas.requestPointerLock(); };
+
 $('btn-clearslot').onclick = () => { hotbarMats[invSelSlot] = null; saveDirty = true; refreshHotbar(); renderInv(); };
 $('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-chest-close').onclick = () => { openChestKey = null; if (inWorld) canvas.requestPointerLock(); };
@@ -1895,10 +2145,11 @@ let heldBtn = null, heldT = 0;
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   digState = null; hideDigbar();
-  if (locked) { invOpen = false; openChestKey = null; showScreen(null); }
+  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; showScreen(null); }
   else if (inWorld) {
     if (openChestKey) showScreen('chest');
     else if (invOpen) showScreen('inv');
+    else if (mapOpen) showScreen('map');
     else { showScreen('pause'); saveWorld(); savePlayerStash(); }
   }
   keys.clear(); heldBtn = null;
@@ -1918,6 +2169,10 @@ document.addEventListener('keydown', e => {
     else if (invOpen) { invOpen = false; canvas.requestPointerLock(); }
     else if (openChestKey) { openChestKey = null; canvas.requestPointerLock(); }
   }
+  if (e.code === 'KeyM' && inWorld) {
+    if (locked) { mapOpen = true; document.exitPointerLock(); }
+    else if (mapOpen) { mapOpen = false; canvas.requestPointerLock(); }
+  }
   if (locked && e.code.startsWith('Digit')) {
     const n = +e.code.slice(5);
     if (n >= 1 && n <= 9) selectSlot(n - 1);
@@ -1930,7 +2185,7 @@ canvas.addEventListener('mousedown', e => {
   if (!locked) return;
   heldBtn = e.button; heldT = performance.now();
   if (e.button === 2) tryPlace(true);
-  if (e.button === 0) digState = null;
+  if (e.button === 0) swing(performance.now());
 });
 document.addEventListener('mouseup', () => { heldBtn = null; digState = null; hideDigbar(); });
 document.addEventListener('wheel', e => {
@@ -1997,10 +2252,11 @@ function loop(now) {
     updateChunks();
     if (locked) {
       physics(dt);
-      if (heldBtn === 0) updateDig(dt, now);
+      if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
     if (!isGuest) processReacts(now);
+    updateDrops(dt, now);
     updateAvatars(dt);
     updateHUD(now);
   }
@@ -2030,7 +2286,7 @@ window.G = {
   saveNow: saveWorld, exitWorld, hostGame, joinGame,
   inv: () => ({ ...inv }), give(id, n) { addInv(id, n ?? 1); },
   breakAt(x, y, z) { completeBreak({ x, y, z, id: worldGetBlock(x, y, z) }); },
-  openChest, renderInv, showScreen, selectSlot, tryPlace,
+  openChest, renderInv, showScreen, selectSlot, tryPlace, swing, drops,
   reacts: () => reactQueue.length,
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
 };
