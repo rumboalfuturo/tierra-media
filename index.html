@@ -9,12 +9,19 @@
   #c { display:block; width:100%; height:100%; }
 
   /* ---------- HUD (solo en partida) ---------- */
-  #crosshair, #biome, #coords, #hotbar, #netinfo { display:none; }
+  #crosshair, #biome, #coords, #hotbar, #netinfo, #minimap { display:none; }
   body.ingame #crosshair { display:block; }
   body.ingame #biome    { display:block; }
   body.ingame #coords   { display:block; }
   body.ingame #netinfo  { display:block; }
   body.ingame #hotbar   { display:flex; }
+  body.ingame #minimap  { display:block; }
+
+  #minimap {
+    position:fixed; top:40px; right:14px; width:150px; height:150px;
+    border-radius:50%; border:2px solid rgba(190,160,90,.6);
+    box-shadow:0 2px 12px rgba(0,0,0,.55); background:rgba(8,6,10,.45);
+  }
 
   #crosshair {
     position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
@@ -148,6 +155,7 @@
 <div id="biome"></div>
 <div id="coords"></div>
 <div id="netinfo"></div>
+<canvas id="minimap" width="150" height="150"></canvas>
 <div id="toast"></div>
 <div id="hotbar"></div>
 
@@ -2074,12 +2082,12 @@ const MARKERS = [
   { x: 230, z: 230,  n: 'Minas Tirith' },
   { x: 330, z: 290,  n: 'Barad-dûr' },
 ];
-function renderMap() {
-  const cv = $('mapcanvas'), g = cv.getContext('2d');
-  const sx = cv.width / (MAPB.x1 - MAPB.x0), sz = cv.height / (MAPB.z1 - MAPB.z0);
-  if (!mapCache || mapCacheSeed !== SEED) {
-    mapCache = document.createElement('canvas');
-    mapCache.width = cv.width; mapCache.height = cv.height;
+function ensureMapCache() {
+  if (mapCache && mapCacheSeed === SEED) return;
+  mapCache = document.createElement('canvas');
+  mapCache.width = 560; mapCache.height = 560;
+  const sx = mapCache.width / (MAPB.x1 - MAPB.x0), sz = mapCache.height / (MAPB.z1 - MAPB.z0);
+  {
     const mg = mapCache.getContext('2d');
     const step = 4;
     for (let wz = MAPB.z0; wz < MAPB.z1; wz += step) for (let wx = MAPB.x0; wx < MAPB.x1; wx += step) {
@@ -2109,6 +2117,11 @@ function renderMap() {
     }
     mapCacheSeed = SEED;
   }
+}
+function renderMap() {
+  ensureMapCache();
+  const cv = $('mapcanvas'), g = cv.getContext('2d');
+  const sx = cv.width / (MAPB.x1 - MAPB.x0), sz = cv.height / (MAPB.z1 - MAPB.z0);
   g.drawImage(mapCache, 0, 0);
   for (const a of avatars.values()) {
     const px = (a.group.position.x - MAPB.x0) * sx, pz = (a.group.position.z - MAPB.z0) * sz;
@@ -2120,6 +2133,40 @@ function renderMap() {
   g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
 }
 $('btn-map-close').onclick = () => { mapOpen = false; if (inWorld) canvas.requestPointerLock(); };
+
+/* ----- minimapa (esquina superior derecha) ----- */
+function renderMinimap() {
+  ensureMapCache();
+  const cv = $('minimap'), g = cv.getContext('2d');
+  const S = cv.width;
+  const pxb = mapCache.width / (MAPB.x1 - MAPB.x0);   // píxeles del caché por bloque
+  const VIEW = 170;                                    // bloques visibles de lado a lado
+  const src = VIEW * pxb;
+  g.clearRect(0, 0, S, S);
+  g.save();
+  g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 2, 0, 7); g.clip();
+  g.fillStyle = '#0c0a12'; g.fillRect(0, 0, S, S);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(mapCache,
+    (player.x - MAPB.x0) * pxb - src / 2, (player.z - MAPB.z0) * pxb - src / 2, src, src,
+    0, 0, S, S);
+  for (const a of avatars.values()) {
+    const rx = (a.group.position.x - player.x) / VIEW * S + S / 2;
+    const rz = (a.group.position.z - player.z) / VIEW * S + S / 2;
+    if (rx > 5 && rx < S - 5 && rz > 5 && rz < S - 5) {
+      g.fillStyle = '#41d94c'; g.beginPath(); g.arc(rx, rz, 4, 0, 7); g.fill();
+      g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
+    }
+  }
+  g.translate(S / 2, S / 2); g.rotate(-yaw);           // tu flecha, apuntando hacia donde miras
+  g.fillStyle = '#ff3b30';
+  g.beginPath(); g.moveTo(0, -8); g.lineTo(5, 6); g.lineTo(0, 3); g.lineTo(-5, 6); g.closePath(); g.fill();
+  g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
+  g.restore();
+  g.font = 'bold 12px Georgia'; g.textAlign = 'center';
+  g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.8)'; g.strokeText('N', S / 2, 15);
+  g.fillStyle = '#ffd86b'; g.fillText('N', S / 2, 15);
+}
 
 $('btn-clearslot').onclick = () => { hotbarMats[invSelSlot] = null; saveDirty = true; refreshHotbar(); renderInv(); };
 $('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.requestPointerLock(); };
@@ -2267,6 +2314,7 @@ function loop(now) {
     updateDrops(dt, now);
     updateAvatars(dt);
     updateHUD(now);
+    renderMinimap();
   }
   camera.position.set(player.x, player.y + PEYE, player.z);
   camera.rotation.set(pitch, yaw, 0);
