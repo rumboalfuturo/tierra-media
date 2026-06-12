@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Tierra Media — un mundo de bloques</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; font-family: Georgia, 'Times New Roman', serif; }
+  #c { display:block; width:100%; height:100%; }
+
+  /* ---------- HUD (solo en partida) ---------- */
+  #crosshair, #biome, #coords, #hotbar, #netinfo { display:none; }
+  body.ingame #crosshair { display:block; }
+  body.ingame #biome    { display:block; }
+  body.ingame #coords   { display:block; }
+  body.ingame #netinfo  { display:block; }
+  body.ingame #hotbar   { display:flex; }
+
+  #crosshair {
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:18px; height:18px; pointer-events:none; mix-blend-mode:difference;
+  }
+  #crosshair::before, #crosshair::after { content:''; position:absolute; background:#fff; }
+  #crosshair::before { left:8px; top:0; width:2px; height:18px; }
+  #crosshair::after  { left:0; top:8px; width:18px; height:2px; }
+
+  #biome {
+    position:fixed; top:14px; left:50%; transform:translateX(-50%);
+    color:#e8d9a0; font-size:20px; letter-spacing:3px; text-shadow:0 2px 6px #000;
+    pointer-events:none; font-style:italic;
+  }
+  #coords {
+    position:fixed; bottom:10px; left:12px; color:rgba(255,255,255,.65);
+    font-size:12px; font-family:monospace; text-shadow:0 1px 3px #000; pointer-events:none;
+  }
+  #netinfo {
+    position:fixed; top:12px; right:14px; color:#cfe3a8; font-size:14px;
+    font-family:monospace; text-shadow:0 1px 4px #000; pointer-events:none;
+  }
+  #toast {
+    position:fixed; bottom:86px; left:50%; transform:translateX(-50%);
+    color:#fff; font-size:16px; text-shadow:0 2px 5px #000; pointer-events:none;
+    opacity:0; transition:opacity .4s; z-index:20;
+  }
+  #hotbar {
+    position:fixed; bottom:14px; left:50%; transform:translateX(-50%);
+    gap:4px; padding:5px; background:rgba(10,8,6,.55);
+    border:2px solid rgba(190,160,90,.5); border-radius:6px;
+  }
+  .slot {
+    width:46px; height:46px; border:2px solid rgba(255,255,255,.18); border-radius:4px;
+    background:rgba(0,0,0,.35); position:relative; image-rendering:pixelated;
+  }
+  .slot.sel { border-color:#e8c860; box-shadow:0 0 10px rgba(232,200,96,.55); }
+  .slot canvas { width:100%; height:100%; image-rendering:pixelated; }
+  .slot .num { position:absolute; top:1px; left:4px; color:rgba(255,255,255,.7); font-size:10px; font-family:monospace; }
+
+  /* ---------- Menús ---------- */
+  #menu {
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(8,6,10,.8); backdrop-filter:blur(4px); z-index:10;
+  }
+  .screen { display:none; flex-direction:column; align-items:center; gap:16px; max-width:680px; width:92%; }
+  .screen h1 {
+    color:#e8c860; font-size:50px; margin:0; letter-spacing:9px; font-weight:normal;
+    text-shadow:0 0 24px rgba(232,200,96,.4), 0 3px 8px #000; text-align:center;
+  }
+  .screen h2 { color:#e8c860; font-size:28px; margin:0; letter-spacing:4px; font-weight:normal; text-shadow:0 2px 6px #000; }
+  .sub { color:#cbb27c; font-size:16px; font-style:italic; margin-top:-8px; text-align:center; }
+  .panel {
+    background:rgba(14,11,18,.92); border:1px solid rgba(190,160,90,.4); border-radius:10px;
+    padding:20px 28px; display:flex; flex-direction:column; gap:14px; align-items:center; width:100%; box-sizing:border-box;
+  }
+  .mbtn {
+    background:rgba(190,160,90,.14); border:1px solid rgba(190,160,90,.55); color:#e8c860;
+    font-family:Georgia, serif; font-size:19px; padding:11px 28px; border-radius:6px; cursor:pointer;
+    letter-spacing:1.5px; width:100%; box-sizing:border-box; transition:background .15s;
+  }
+  .mbtn:hover { background:rgba(190,160,90,.32); }
+  .mbtn.small { width:auto; font-size:15px; padding:7px 16px; }
+  .mbtn.danger { border-color:rgba(200,80,70,.6); color:#e09a90; }
+  .mbtn.danger:hover { background:rgba(200,80,70,.25); }
+  input[type=text] {
+    background:rgba(0,0,0,.5); border:1px solid rgba(190,160,90,.5); color:#f0e6c8;
+    font-family:Georgia, serif; font-size:18px; padding:10px 14px; border-radius:6px; outline:none;
+    width:100%; box-sizing:border-box;
+  }
+  input[type=text]:focus { border-color:#e8c860; }
+  .row { display:flex; gap:10px; width:100%; align-items:center; }
+  .hint { color:#9a8a66; font-size:13px; font-style:italic; text-align:center; line-height:1.7; }
+  label.flabel { color:#cbb27c; font-size:14px; align-self:flex-start; margin-bottom:-8px; }
+
+  #colors { display:flex; gap:10px; }
+  .swatch {
+    width:34px; height:34px; border-radius:50%; cursor:pointer; border:3px solid transparent;
+    box-shadow:0 2px 6px rgba(0,0,0,.6);
+  }
+  .swatch.sel { border-color:#fff; }
+
+  #world-list { width:100%; max-height:260px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+  .wrow {
+    display:flex; align-items:center; gap:10px; background:rgba(0,0,0,.35);
+    border:1px solid rgba(190,160,90,.25); border-radius:6px; padding:10px 14px;
+  }
+  .winfo { flex:1; display:flex; flex-direction:column; color:#f0e6c8; text-align:left; }
+  .winfo b { font-size:18px; letter-spacing:1px; }
+  .winfo span { font-size:12px; color:#9a8a66; font-family:monospace; }
+  .empty { color:#9a8a66; font-style:italic; padding:14px; text-align:center; }
+
+  #join-status { color:#cfe3a8; font-size:15px; min-height:20px; font-style:italic; }
+  #scr-pause { cursor:pointer; }
+  .clickplay { color:#fff; font-size:22px; letter-spacing:4px; animation:pulse 1.8s infinite; }
+  @keyframes pulse { 50% { opacity:.45; } }
+  #pause-net { color:#cfe3a8; font-size:16px; font-family:monospace; text-align:center; line-height:1.8; }
+  #pause-net b { color:#ffe9a0; font-size:22px; letter-spacing:4px; }
+
+  #err {
+    display:none; position:fixed; top:0; left:0; right:0; background:#7a1010; color:#fff;
+    font-family:monospace; font-size:13px; padding:8px 12px; z-index:99; white-space:pre-wrap;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="crosshair"></div>
+<div id="biome"></div>
+<div id="coords"></div>
+<div id="netinfo"></div>
+<div id="toast"></div>
+<div id="hotbar"></div>
+
+<div id="menu">
+
+  <div class="screen" id="scr-main">
+    <h1>TIERRA MEDIA</h1>
+    <div class="sub">Un mundo de bloques inspirado en El Señor de los Anillos</div>
+    <div class="panel" style="max-width:420px;">
+      <label class="flabel">Tu perfil</label>
+      <input type="text" id="pname" maxlength="16" placeholder="Tu nombre">
+      <div id="colors"></div>
+    </div>
+    <div class="panel" style="max-width:420px;">
+      <button class="mbtn" id="btn-sp">⚔ &nbsp;Un jugador</button>
+      <button class="mbtn" id="btn-host">🌐 &nbsp;Crear partida online</button>
+      <button class="mbtn" id="btn-join">🔑 &nbsp;Unirse con código</button>
+    </div>
+    <div class="hint">
+      W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · clic izq/der romper/colocar<br>
+      1–9 o rueda elegir bloque · R volver a La Comarca · ESC menú
+    </div>
+  </div>
+
+  <div class="screen" id="scr-worlds">
+    <h2 id="worlds-title">TUS MUNDOS</h2>
+    <div class="panel">
+      <div id="world-list"></div>
+      <div class="row">
+        <input type="text" id="wname" maxlength="24" placeholder="Nombre del mundo nuevo">
+        <button class="mbtn small" id="btn-newworld">Crear</button>
+      </div>
+    </div>
+    <button class="mbtn small" id="btn-worlds-back">← Volver</button>
+  </div>
+
+  <div class="screen" id="scr-join">
+    <h2>UNIRSE A UNA PARTIDA</h2>
+    <div class="panel" style="max-width:420px;">
+      <div class="hint">Pídele el código de sala al anfitrión<br>(aparece arriba a la derecha en su pantalla)</div>
+      <input type="text" id="jcode" maxlength="5" placeholder="CÓDIGO" style="text-align:center; font-size:26px; letter-spacing:8px; text-transform:uppercase;">
+      <button class="mbtn" id="btn-connect">Conectar</button>
+      <div id="join-status"></div>
+    </div>
+    <button class="mbtn small" id="btn-join-back">← Volver</button>
+  </div>
+
+  <div class="screen" id="scr-pause">
+    <h2 id="pause-title"></h2>
+    <div id="pause-net"></div>
+    <div class="clickplay">— HAZ CLIC PARA JUGAR —</div>
+    <div class="panel" style="max-width:340px; background:transparent; border:none;">
+      <button class="mbtn small" id="btn-pause-host" style="display:none;">🌐 Crear sala online</button>
+      <button class="mbtn small" id="btn-copy" style="display:none;">📋 Copiar código</button>
+      <button class="mbtn small" id="btn-exit">💾 Guardar y salir al menú</button>
+    </div>
+    <div class="hint">W A S D · ESPACIO · SHIFT correr · clic romper/colocar · 1–9 bloques · R spawn</div>
+  </div>
+
+</div>
+
+<div id="err"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1/dist/peerjs.min.js"></script>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const $ = id => document.getElementById(id);
+window.addEventListener('error', e => {
+  $('err').style.display = 'block';
+  $('err').textContent = 'Error: ' + e.message + ' (' + (e.filename || '').split('/').pop() + ':' + e.lineno + ')';
+});
+
+/* ============================================================
+   CONSTANTES
+============================================================ */
+let SEED = 1337;            // semilla del mundo cargado
+const CH = 16;              // tamaño de chunk en XZ
+const WH = 64;              // altura del mundo
+const RD = 5;               // distancia de renderizado en chunks
+const WATER_Y = 16;
+const SPAWN = { x: 8.5, z: 8.5 };
+const TOWER = { x: 75, z: 75 };   // Barad-dûr
+const HOUSE = { x: 20, z: 10 };   // agujero hobbit
+
+const B = {
+  AIR:0, GRASS:1, DIRT:2, STONE:3, SNOW:4, LOG:5, LEAVES:6,
+  MLOG:7, MLEAVES:8, MROCK:9, LAVA:10, WATER:11, SAND:12,
+  MITHRIL:13, DBRICK:14, PLANK:15, COBBLE:16, BEDROCK:17,
+};
+const NAMES = {
+  [B.GRASS]:'Hierba', [B.DIRT]:'Tierra', [B.STONE]:'Piedra', [B.SNOW]:'Nieve',
+  [B.LOG]:'Tronco de roble', [B.LEAVES]:'Hojas de roble', [B.MLOG]:'Tronco de mallorn',
+  [B.MLEAVES]:'Hojas de mallorn', [B.MROCK]:'Roca de Mordor', [B.LAVA]:'Lava',
+  [B.WATER]:'Agua', [B.SAND]:'Arena', [B.MITHRIL]:'Mithril',
+  [B.DBRICK]:'Ladrillo de Barad-dûr', [B.PLANK]:'Tablones', [B.COBBLE]:'Piedra labrada',
+  [B.BEDROCK]:'Roca madre',
+};
+const HOTBAR = [B.COBBLE, B.PLANK, B.LOG, B.LEAVES, B.MLEAVES, B.DBRICK, B.STONE, B.MITHRIL, B.LAVA];
+
+const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3 };
+const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor'];
+
+const isFluid  = id => id === B.WATER || id === B.LAVA;
+const isSolid  = id => id > 0 && !isFluid(id);
+
+/* ============================================================
+   RUIDO (value noise + fBm, determinista)
+============================================================ */
+function hash2(x, z, seed) {
+  let h = Math.imul(x | 0, 374761393) + Math.imul(z | 0, 668265263) + Math.imul(seed | 0, 974593);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function hash3(x, y, z, seed) { return hash2(x + Math.imul(y, 7919), z + Math.imul(y, 104729), seed); }
+function vnoise(x, z, seed) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+  const a = hash2(ix, iz, seed),     b = hash2(ix + 1, iz, seed);
+  const c = hash2(ix, iz + 1, seed), d = hash2(ix + 1, iz + 1, seed);
+  return (a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz) * 2 - 1;
+}
+function fbm(x, z, seed, oct = 4) {
+  let amp = 1, freq = 1, sum = 0, norm = 0;
+  for (let i = 0; i < oct; i++) {
+    sum += amp * vnoise(x * freq, z * freq, seed + i * 101);
+    norm += amp; amp *= 0.5; freq *= 2;
+  }
+  return sum / norm;
+}
+function smoothstep(e0, e1, x) {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* ============================================================
+   GENERACIÓN DE TERRENO
+============================================================ */
+const biomeNoise = (wx, wz) => fbm(wx * 0.004, wz * 0.004, SEED + 5, 3);
+
+function biomeAt(wx, wz) {
+  if (Math.hypot(wx - TOWER.x, wz - TOWER.z) < 40) return BIOME.MORDOR;
+  if (Math.hypot(wx - SPAWN.x, wz - SPAWN.z) < 35) return BIOME.SHIRE;
+  const b = biomeNoise(wx, wz);
+  if (b > 0.30)  return BIOME.MOUNTAIN;
+  if (b < -0.22) return BIOME.MORDOR;
+  if (b > 0.13)  return BIOME.LOTHLORIEN;
+  return BIOME.SHIRE;
+}
+
+function heightAt(wx, wz) {
+  let h = 20 + fbm(wx * 0.012, wz * 0.012, SEED + 1, 4) * 5.5;
+  const b = biomeNoise(wx, wz);
+  const m = smoothstep(0.30, 0.58, b);
+  if (m > 0) {
+    h += m * (16 + (fbm(wx * 0.02, wz * 0.02, SEED + 2, 4) * 0.5 + 0.5) * 20);
+    h += m * fbm(wx * 0.055, wz * 0.055, SEED + 8, 3) * 7;   // crestas y rocas
+  }
+  if (biomeAt(wx, wz) === BIOME.MORDOR) {
+    const p = fbm(wx * 0.03, wz * 0.03, SEED + 3, 3);
+    if (p > 0.38) h = Math.min(h, 13.6);   // lagos de lava
+  }
+  const dS = Math.hypot(wx - SPAWN.x, wz - SPAWN.z);
+  if (dS < 40) h = lerp(21.2, h, smoothstep(20, 40, dS));
+  const dT = Math.hypot(wx - TOWER.x, wz - TOWER.z);
+  if (dT < 45) h = lerp(22.2, h, smoothstep(25, 45, dT));
+  return Math.max(2, Math.min(WH - 10, Math.floor(h)));
+}
+
+/* ============================================================
+   MUNDO (chunks + ediciones persistentes)
+============================================================ */
+const chunks = new Map();           // "cx,cz" -> { cx, cz, data, group }
+const dirty = new Set();
+const editsByChunk = new Map();     // "cx,cz" -> Map("lx,ly,lz" -> id)
+const K = (cx, cz) => cx + ',' + cz;
+const IDX = (lx, ly, lz) => ((ly * CH) + lz) * CH + lx;
+
+function worldGetBlock(wx, wy, wz) {
+  if (wy < 0) return B.STONE;
+  if (wy >= WH) return B.AIR;
+  const ch = chunks.get(K(wx >> 4, wz >> 4));
+  if (!ch) return -1;  // desconocido
+  return ch.data[IDX(wx & 15, wy, wz & 15)];
+}
+function setBlockRaw(wx, wy, wz, id) {
+  if (wy < 0 || wy >= WH) return;
+  const cx = wx >> 4, cz = wz >> 4;
+  const ch = chunks.get(K(cx, cz));
+  if (!ch) return;
+  ch.data[IDX(wx & 15, wy, wz & 15)] = id;
+  markDirty(cx, cz);
+  if ((wx & 15) === 0)  markDirty(cx - 1, cz);
+  if ((wx & 15) === 15) markDirty(cx + 1, cz);
+  if ((wz & 15) === 0)  markDirty(cx, cz - 1);
+  if ((wz & 15) === 15) markDirty(cx, cz + 1);
+}
+function markDirty(cx, cz) { if (chunks.has(K(cx, cz))) dirty.add(K(cx, cz)); }
+
+function recordEdit(wx, wy, wz, id) {
+  const ck = (wx >> 4) + ',' + (wz >> 4);
+  let m = editsByChunk.get(ck);
+  if (!m) editsByChunk.set(ck, m = new Map());
+  m.set((wx & 15) + ',' + wy + ',' + (wz & 15), id);
+}
+function flattenEdits() {
+  const out = [];
+  for (const [ck, m] of editsByChunk) {
+    const [cx, cz] = ck.split(',').map(Number);
+    for (const [k, id] of m) {
+      const [lx, ly, lz] = k.split(',').map(Number);
+      out.push([cx * 16 + lx, ly, cz * 16 + lz, id]);
+    }
+  }
+  return out;
+}
+
+// Edición hecha por el jugador local: aplica, registra y propaga por red
+function playerSetBlock(wx, wy, wz, id) {
+  if (wy < 1 || wy >= WH) return;
+  recordEdit(wx, wy, wz, id);
+  setBlockRaw(wx, wy, wz, id);
+  saveDirty = true;
+  const msg = { t: 'set', x: wx, y: wy, z: wz, id };
+  if (isHost) broadcast(msg);
+  else if (isGuest && hostConn && hostConn.open) hostConn.send(msg);
+}
+// Edición recibida por red
+function netApplySet(wx, wy, wz, id) {
+  if (wy < 1 || wy >= WH) return;
+  recordEdit(wx, wy, wz, id);
+  setBlockRaw(wx, wy, wz, id);
+  if (isHost) saveDirty = true;
+}
+
+function genChunk(cx, cz) {
+  const data = new Uint8Array(CH * WH * CH);
+  const baseX = cx * CH, baseZ = cz * CH;
+
+  for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+    const wx = baseX + lx, wz = baseZ + lz;
+    const biome = biomeAt(wx, wz);
+    const ih = heightAt(wx, wz);
+
+    for (let y = 0; y <= ih; y++) {
+      let id;
+      if (y === 0) id = B.BEDROCK;
+      else if (y === ih) {
+        if (biome === BIOME.MORDOR) id = B.MROCK;
+        else if (ih >= 34) id = B.SNOW;
+        else if (ih >= 27) id = B.STONE;
+        else if (ih <= WATER_Y + 1) id = B.SAND;
+        else id = B.GRASS;
+      } else if (y >= ih - 3) {
+        if (biome === BIOME.MORDOR) id = B.MROCK;
+        else if (ih >= 34 && y >= ih - 2) id = B.SNOW;
+        else id = ih >= 27 ? B.STONE : B.DIRT;
+      } else {
+        id = (y < 24 && hash3(wx, y, wz, SEED + 7) < 0.012) ? B.MITHRIL : B.STONE;
+      }
+      data[IDX(lx, y, lz)] = id;
+    }
+    if (ih < WATER_Y) {
+      const fluid = biome === BIOME.MORDOR ? B.LAVA : B.WATER;
+      for (let y = ih + 1; y <= WATER_Y; y++) data[IDX(lx, y, lz)] = fluid;
+    }
+  }
+
+  genTrees(data, cx, cz);
+  genStructures(data, cx, cz);
+
+  // aplicar ediciones guardadas / recibidas
+  const em = editsByChunk.get(K(cx, cz));
+  if (em) for (const [k, id] of em) {
+    const [lx, ly, lz] = k.split(',').map(Number);
+    data[IDX(lx, ly, lz)] = id;
+  }
+
+  const ch = { cx, cz, data, group: null };
+  chunks.set(K(cx, cz), ch);
+  dirty.add(K(cx, cz));
+  markDirty(cx - 1, cz); markDirty(cx + 1, cz); markDirty(cx, cz - 1); markDirty(cx, cz + 1);
+  return ch;
+}
+
+/* ----- árboles ----- */
+function genTrees(data, cx, cz) {
+  const baseX = cx * CH, baseZ = cz * CH;
+  const put = (wx, y, wz, id, overwriteLeaves) => {
+    const lx = wx - baseX, lz = wz - baseZ;
+    if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 1 || y >= WH) return;
+    const cur = data[IDX(lx, y, lz)];
+    if (cur === B.AIR || (overwriteLeaves && (cur === B.LEAVES || cur === B.MLEAVES))) {
+      data[IDX(lx, y, lz)] = id;
+    }
+  };
+  for (let tz = -3; tz < CH + 3; tz++) for (let tx = -3; tx < CH + 3; tx++) {
+    const wx = baseX + tx, wz = baseZ + tz;
+    const biome = biomeAt(wx, wz);
+    if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
+    const density = biome === BIOME.LOTHLORIEN ? 0.022 : 0.005;
+    if (hash2(wx, wz, SEED + 9) >= density) continue;
+    const gh = heightAt(wx, wz);
+    if (gh <= WATER_Y + 1 || gh >= 27) continue;
+    if (Math.hypot(wx - SPAWN.x, wz - SPAWN.z) < 7) continue;
+    if (Math.hypot(wx - HOUSE.x, wz - HOUSE.z) < 9) continue;
+    const r2 = hash2(wx, wz, SEED + 10);
+
+    if (biome === BIOME.LOTHLORIEN) {
+      const th = 7 + Math.floor(r2 * 3);
+      for (let y = gh + th - 1; y <= gh + th + 1; y++)
+        for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+          if (Math.abs(dx) + Math.abs(dz) > 4) continue;
+          put(wx + dx, y, wz + dz, B.MLEAVES, false);
+        }
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++)
+        if (Math.abs(dx) + Math.abs(dz) <= 1) put(wx + dx, gh + th + 2, wz + dz, B.MLEAVES, false);
+      for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.MLOG, true);
+    } else {
+      const th = 4 + Math.floor(r2 * 2);
+      for (let y = gh + th - 1; y <= gh + th; y++)
+        for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+          if (Math.abs(dx) === 2 && Math.abs(dz) === 2 && ((dx + dz + y) & 1)) continue;
+          put(wx + dx, y, wz + dz, B.LEAVES, false);
+        }
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++)
+        put(wx + dx, gh + th + 1, wz + dz, B.LEAVES, false);
+      put(wx, gh + th + 2, wz, B.LEAVES, false);
+      for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.LOG, true);
+    }
+  }
+}
+
+/* ----- estructuras: Barad-dûr y agujero hobbit ----- */
+function genStructures(data, cx, cz) {
+  const baseX = cx * CH, baseZ = cz * CH;
+  const set = (lx, y, lz, id) => { if (y >= 0 && y < WH) data[IDX(lx, y, lz)] = id; };
+
+  for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+    const wx = baseX + lx, wz = baseZ + lz;
+
+    // --- Barad-dûr ---
+    const tdx = wx - TOWER.x, tdz = wz - TOWER.z;
+    if (Math.abs(tdx) <= 4 && Math.abs(tdz) <= 4) {
+      const r = Math.max(Math.abs(tdx), Math.abs(tdz));
+      let top;
+      if (r === 4)      top = 30 + (((wx + wz) & 1) ? 2 : 0);  // almenas
+      else if (r === 3) top = 36;
+      else if (r === 2) top = 42;
+      else              top = 47;
+      for (let y = 1; y <= top; y++) set(lx, y, lz, B.DBRICK);
+      if (tdx === 0 && tdz === 0) for (let y = 48; y <= 51; y++) set(lx, y, lz, B.LAVA);   // el Ojo
+      if (Math.abs(tdx) === 1 && tdz === 0) for (let y = 48; y <= 53; y++) set(lx, y, lz, B.DBRICK); // cuernos
+    }
+
+    // --- agujero hobbit ---
+    const hdx = wx - HOUSE.x, hdz = wz - HOUSE.z;
+    const hr = Math.hypot(hdx, hdz);
+    if (hr <= 5.2) {
+      const ground = 21;
+      const domeH = Math.max(0, Math.round(Math.sqrt(Math.max(0, 20 - hr * hr)) * 0.95));
+      if (domeH > 0) {
+        for (let y = ground + 1; y < ground + domeH; y++) set(lx, y, lz, B.DIRT);
+        set(lx, ground + domeH, lz, B.GRASS);
+      }
+      if (hr <= 3.0) {
+        set(lx, ground, lz, B.PLANK);
+        set(lx, ground + 1, lz, B.AIR); set(lx, ground + 2, lz, B.AIR);
+      }
+      if (hdz === 0 && hdx <= -2 && hdx >= -5) { set(lx, ground + 1, lz, B.AIR); set(lx, ground + 2, lz, B.AIR); }
+      if (Math.abs(hdz) === 1 && hdx === -4) { set(lx, ground + 1, lz, B.LOG); set(lx, ground + 2, lz, B.LOG); }
+      if (Math.abs(hdz) <= 1 && hdx === -4) set(lx, ground + 3, lz, B.LOG);
+      if (hdx === 2 && hdz === 0) set(lx, ground + 1, lz, B.MITHRIL);
+    }
+  }
+}
+
+/* ============================================================
+   TEXTURAS (atlas procedural en canvas)
+============================================================ */
+const T = 16, ACOLS = 8, AROWS = 4;
+const atlasCanvas = document.createElement('canvas');
+atlasCanvas.width = ACOLS * T; atlasCanvas.height = AROWS * T;
+const actx = atlasCanvas.getContext('2d');
+
+function makeRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+const css = (r, g, b) => `rgb(${Math.max(0,Math.min(255,r|0))},${Math.max(0,Math.min(255,g|0))},${Math.max(0,Math.min(255,b|0))})`;
+function px(ox, oy, x, y, r, g, b) { actx.fillStyle = css(r, g, b); actx.fillRect(ox + x, oy + y, 1, 1); }
+function speckle(ox, oy, base, v, rng) {
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    const f = 1 + (rng() - 0.5) * 2 * v;
+    px(ox, oy, x, y, base[0] * f, base[1] * f, base[2] * f);
+  }
+}
+
+const TILE_PAINTERS = [
+  /* 0 grass_top */ (ox, oy, rng) => speckle(ox, oy, [88, 148, 68], 0.13, rng),
+  /* 1 grass_side */ (ox, oy, rng) => {
+    speckle(ox, oy, [121, 85, 58], 0.15, rng);
+    for (let x = 0; x < T; x++) {
+      const d = 2 + (rng() < 0.4 ? 1 : 0);
+      for (let y = 0; y < d; y++) { const f = 1 + (rng() - 0.5) * 0.25; px(ox, oy, x, y, 88 * f, 148 * f, 68 * f); }
+    }
+  },
+  /* 2 dirt */    (ox, oy, rng) => speckle(ox, oy, [121, 85, 58], 0.16, rng),
+  /* 3 stone */   (ox, oy, rng) => {
+    speckle(ox, oy, [127, 131, 134], 0.09, rng);
+    for (let i = 0; i < 5; i++) { const x = (rng() * 14) | 0, y = (rng() * 14) | 0;
+      actx.fillStyle = 'rgba(80,84,88,.5)'; actx.fillRect(ox + x, oy + y, 2, 2); }
+  },
+  /* 4 snow */    (ox, oy, rng) => speckle(ox, oy, [232, 238, 244], 0.045, rng),
+  /* 5 log_side */(ox, oy, rng) => {
+    for (let x = 0; x < T; x++) { const f = 0.85 + (x % 4 === 0 ? -0.18 : 0) + rng() * 0.18;
+      for (let y = 0; y < T; y++) { const g = f * (1 + (rng() - 0.5) * 0.12); px(ox, oy, x, y, 98 * g, 70 * g, 40 * g); } }
+  },
+  /* 6 log_top */ (ox, oy, rng) => {
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      const ring = (Math.sin(d * 2.4) * 0.5 + 0.5) * 0.3 + 0.75 + (rng() - 0.5) * 0.1;
+      px(ox, oy, x, y, 142 * ring, 108 * ring, 64 * ring);
+    }
+  },
+  /* 7 oak_leaves */ (ox, oy, rng) => {
+    speckle(ox, oy, [60, 112, 46], 0.25, rng);
+    for (let i = 0; i < 12; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 30, 58, 24);
+  },
+  /* 8 mallorn_log */ (ox, oy, rng) => {
+    for (let x = 0; x < T; x++) { const f = 0.88 + (x % 5 === 0 ? -0.16 : 0) + rng() * 0.14;
+      for (let y = 0; y < T; y++) { const g = f * (1 + (rng() - 0.5) * 0.08); px(ox, oy, x, y, 176 * g, 170 * g, 156 * g); } }
+  },
+  /* 9 mallorn_leaves */ (ox, oy, rng) => {
+    speckle(ox, oy, [214, 164, 62], 0.18, rng);
+    for (let i = 0; i < 10; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 246, 210, 110);
+  },
+  /* 10 mordor_rock */ (ox, oy, rng) => {
+    speckle(ox, oy, [58, 52, 60], 0.2, rng);
+    for (let i = 0; i < 4; i++) { actx.fillStyle = 'rgba(28,24,30,.6)';
+      actx.fillRect(ox + ((rng() * 13) | 0), oy + ((rng() * 13) | 0), 3, 2); }
+  },
+  /* 11 lava */   (ox, oy, rng) => {
+    speckle(ox, oy, [222, 82, 22], 0.18, rng);
+    for (let i = 0; i < 7; i++) { const x = (rng() * 13) | 0, y = (rng() * 15) | 0;
+      actx.fillStyle = css(255, 200, 60); actx.fillRect(ox + x, oy + y, 2 + ((rng() * 2) | 0), 1); }
+  },
+  /* 12 water */  (ox, oy, rng) => speckle(ox, oy, [58, 108, 180], 0.07, rng),
+  /* 13 sand */   (ox, oy, rng) => speckle(ox, oy, [216, 200, 144], 0.09, rng),
+  /* 14 mithril */(ox, oy, rng) => {
+    speckle(ox, oy, [127, 131, 134], 0.09, rng);
+    for (let i = 0; i < 5; i++) { const x = 1 + ((rng() * 13) | 0), y = 1 + ((rng() * 13) | 0);
+      actx.fillStyle = css(150, 240, 235); actx.fillRect(ox + x, oy + y, 2, 1);
+      actx.fillRect(ox + x, oy + y - 1, 1, 1); }
+  },
+  /* 15 dark_brick */ (ox, oy, rng) => {
+    speckle(ox, oy, [26, 22, 32], 0.15, rng);
+    actx.fillStyle = css(46, 40, 58);
+    for (let row = 0; row < 4; row++) {
+      const off = (row % 2) * 4;
+      for (let col = -1; col < 3; col++) actx.fillRect(ox + off + col * 8 + 1, oy + row * 4 + 1, 6, 2);
+    }
+  },
+  /* 16 plank */  (ox, oy, rng) => {
+    speckle(ox, oy, [156, 116, 68], 0.1, rng);
+    actx.fillStyle = 'rgba(90,62,32,.8)';
+    for (let y = 3; y < T; y += 4) actx.fillRect(ox, oy + y, T, 1);
+  },
+  /* 17 cobble */ (ox, oy, rng) => {
+    speckle(ox, oy, [70, 72, 76], 0.1, rng);
+    for (let by = 0; by < 4; by++) for (let bx = 0; bx < 4; bx++) {
+      const f = 0.8 + rng() * 0.45;
+      actx.fillStyle = css(120 * f, 122 * f, 126 * f);
+      actx.fillRect(ox + bx * 4 + ((bx + by) % 2), oy + by * 4, 3, 3);
+    }
+  },
+  /* 18 bedrock */(ox, oy, rng) => {
+    for (let y = 0; y < T; y += 2) for (let x = 0; x < T; x += 2) {
+      const f = 0.5 + rng() * 0.8;
+      actx.fillStyle = css(44 * f, 44 * f, 48 * f); actx.fillRect(ox + x, oy + y, 2, 2);
+    }
+  },
+];
+TILE_PAINTERS.forEach((paint, i) => {
+  paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
+});
+
+const TILE_MAP = {
+  [B.GRASS]:   { top: 0, bottom: 2, side: 1 },
+  [B.DIRT]:    { all: 2 },
+  [B.STONE]:   { all: 3 },
+  [B.SNOW]:    { all: 4 },
+  [B.LOG]:     { top: 6, bottom: 6, side: 5 },
+  [B.LEAVES]:  { all: 7 },
+  [B.MLOG]:    { top: 6, bottom: 6, side: 8 },
+  [B.MLEAVES]: { all: 9 },
+  [B.MROCK]:   { all: 10 },
+  [B.LAVA]:    { all: 11 },
+  [B.WATER]:   { all: 12 },
+  [B.SAND]:    { all: 13 },
+  [B.MITHRIL]: { all: 14 },
+  [B.DBRICK]:  { all: 15 },
+  [B.PLANK]:   { all: 16 },
+  [B.COBBLE]:  { all: 17 },
+  [B.BEDROCK]: { all: 18 },
+};
+function tileFor(id, faceIdx) {
+  const t = TILE_MAP[id];
+  if (!t) return 3;
+  if (t.all !== undefined) return t.all;
+  if (faceIdx === 3) return t.top;
+  if (faceIdx === 2) return t.bottom;
+  return t.side;
+}
+
+const atlasTex = new THREE.CanvasTexture(atlasCanvas);
+atlasTex.magFilter = THREE.NearestFilter;
+atlasTex.minFilter = THREE.NearestFilter;
+atlasTex.generateMipmaps = false;
+atlasTex.colorSpace = THREE.SRGBColorSpace;
+
+/* ============================================================
+   ESCENA
+============================================================ */
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+
+const scene = new THREE.Scene();
+const skyColor = new THREE.Color(0x8ab4dd);
+scene.background = skyColor;
+scene.fog = new THREE.Fog(skyColor, RD * 16 * 0.62, RD * 16 * 1.05);
+scene.fog.color = skyColor;
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1000);
+camera.rotation.order = 'YXZ';
+
+const matSolid = new THREE.MeshLambertMaterial({ map: atlasTex });
+const matWater = new THREE.MeshLambertMaterial({ map: atlasTex, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide });
+const matGlow  = new THREE.MeshBasicMaterial({ map: atlasTex });   // lava: brilla sin luz
+
+const dirLight = new THREE.DirectionalLight(0xfff3d8, 2.2);
+scene.add(dirLight); scene.add(dirLight.target);
+const hemi = new THREE.HemisphereLight(0xcfe5ff, 0x6b5b45, 0.8);
+scene.add(hemi);
+const eyeLight = new THREE.PointLight(0xff4400, 900, 150, 1.8);
+eyeLight.position.set(TOWER.x + 0.5, 51, TOWER.z + 0.5);
+scene.add(eyeLight);
+
+function discSprite(inner, outer) {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 4, 32, 32, 30);
+  grad.addColorStop(0, inner); grad.addColorStop(0.55, inner); grad.addColorStop(1, outer);
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.SpriteMaterial({ map: tx, fog: false, transparent: true, depthWrite: false });
+  return new THREE.Sprite(m);
+}
+const sun = discSprite('rgba(255,236,170,1)', 'rgba(255,200,80,0)');  sun.scale.set(60, 60, 1);
+const moon = discSprite('rgba(214,224,238,1)', 'rgba(160,180,210,0)'); moon.scale.set(34, 34, 1);
+scene.add(sun); scene.add(moon);
+
+/* ============================================================
+   MESHER
+============================================================ */
+const FACES = [
+  { dir: [-1, 0, 0], corners: [[0,1,0,0,1],[0,0,0,0,0],[0,1,1,1,1],[0,0,1,1,0]] }, // 0 -x
+  { dir: [ 1, 0, 0], corners: [[1,1,1,0,1],[1,0,1,0,0],[1,1,0,1,1],[1,0,0,1,0]] }, // 1 +x
+  { dir: [ 0,-1, 0], corners: [[1,0,1,1,0],[0,0,1,0,0],[1,0,0,1,1],[0,0,0,0,1]] }, // 2 -y
+  { dir: [ 0, 1, 0], corners: [[0,1,1,1,1],[1,1,1,0,1],[0,1,0,1,0],[1,1,0,0,0]] }, // 3 +y
+  { dir: [ 0, 0,-1], corners: [[1,0,0,0,0],[0,0,0,1,0],[1,1,0,0,1],[0,1,0,1,1]] }, // 4 -z
+  { dir: [ 0, 0, 1], corners: [[0,0,1,0,0],[1,0,1,1,0],[0,1,1,0,1],[1,1,1,1,1]] }, // 5 +z
+];
+const UV_E = 0.02;
+
+function faceVisible(self, nb) {
+  if (nb === -1) return false;
+  if (self === B.WATER) return nb === B.AIR;
+  return nb === B.AIR || nb === B.WATER;
+}
+
+function buildChunkMesh(ch) {
+  if (ch.group) {
+    for (const m of ch.group.children) m.geometry.dispose();
+    ch.group.clear();
+  } else {
+    ch.group = new THREE.Group();
+    ch.group.position.set(ch.cx * CH, 0, ch.cz * CH);
+    scene.add(ch.group);
+  }
+  const buckets = {
+    solid: { pos: [], nor: [], uv: [], idx: [] },
+    water: { pos: [], nor: [], uv: [], idx: [] },
+    glow:  { pos: [], nor: [], uv: [], idx: [] },
+  };
+  const baseX = ch.cx * CH, baseZ = ch.cz * CH;
+  const data = ch.data;
+
+  const nbAt = (lx, ly, lz) => {
+    if (lx >= 0 && lx < CH && lz >= 0 && lz < CH && ly >= 0 && ly < WH) return data[IDX(lx, ly, lz)];
+    return worldGetBlock(baseX + lx, ly, baseZ + lz);
+  };
+
+  for (let ly = 0; ly < WH; ly++) for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+    const id = data[IDX(lx, ly, lz)];
+    if (!id) continue;
+    const bucket = id === B.WATER ? buckets.water : id === B.LAVA ? buckets.glow : buckets.solid;
+    for (let f = 0; f < 6; f++) {
+      const face = FACES[f];
+      const nb = nbAt(lx + face.dir[0], ly + face.dir[1], lz + face.dir[2]);
+      if (!faceVisible(id, nb)) continue;
+      const tile = tileFor(id, f);
+      const tx = tile % ACOLS, ty = (tile / ACOLS) | 0;
+      const base = bucket.pos.length / 3;
+      for (const c of face.corners) {
+        bucket.pos.push(lx + c[0], ly + c[1], lz + c[2]);
+        bucket.nor.push(face.dir[0], face.dir[1], face.dir[2]);
+        bucket.uv.push(
+          (tx + UV_E + c[3] * (1 - 2 * UV_E)) / ACOLS,
+          ((AROWS - 1 - ty) + UV_E + c[4] * (1 - 2 * UV_E)) / AROWS
+        );
+      }
+      bucket.idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+    }
+  }
+
+  const mats = { solid: matSolid, water: matWater, glow: matGlow };
+  for (const name of ['solid', 'glow', 'water']) {
+    const b = buckets[name];
+    if (!b.idx.length) continue;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+    g.setAttribute('normal',   new THREE.Float32BufferAttribute(b.nor, 3));
+    g.setAttribute('uv',       new THREE.Float32BufferAttribute(b.uv, 2));
+    g.setIndex(b.idx);
+    const mesh = new THREE.Mesh(g, mats[name]);
+    ch.group.add(mesh);
+  }
+}
+
+/* ============================================================
+   STREAMING DE CHUNKS
+============================================================ */
+let genQueue = [];
+let lastPC = null;
+
+function refreshQueue(pcx, pcz) {
+  genQueue = [];
+  for (let dz = -RD; dz <= RD; dz++) for (let dx = -RD; dx <= RD; dx++) {
+    const cx = pcx + dx, cz = pcz + dz;
+    const k = K(cx, cz);
+    const ch = chunks.get(k);
+    if (!ch) genQueue.push({ cx, cz, d: dx * dx + dz * dz });
+    else if (!ch.group) dirty.add(k);
+  }
+  genQueue.sort((a, b) => a.d - b.d);
+  for (const ch of chunks.values()) {
+    if (ch.group && Math.max(Math.abs(ch.cx - pcx), Math.abs(ch.cz - pcz)) > RD + 1) {
+      for (const m of ch.group.children) m.geometry.dispose();
+      scene.remove(ch.group);
+      ch.group = null;
+    }
+  }
+}
+
+function updateChunks() {
+  const pcx = Math.floor(player.x / CH), pcz = Math.floor(player.z / CH);
+  if (!lastPC || lastPC.x !== pcx || lastPC.z !== pcz) {
+    lastPC = { x: pcx, z: pcz };
+    refreshQueue(pcx, pcz);
+  }
+  let n = 0;
+  while (genQueue.length && n < 2) {
+    const job = genQueue.shift();
+    if (!chunks.has(K(job.cx, job.cz))) { genChunk(job.cx, job.cz); n++; }
+  }
+  if (dirty.size) {
+    const sorted = [...dirty].map(k => {
+      const [cx, cz] = k.split(',').map(Number);
+      return { k, cx, cz, d: (cx - pcx) ** 2 + (cz - pcz) ** 2 };
+    }).filter(o => Math.max(Math.abs(o.cx - pcx), Math.abs(o.cz - pcz)) <= RD)
+      .sort((a, b) => a.d - b.d);
+    let m = 0;
+    for (const o of sorted) {
+      if (m >= 3) break;
+      const ch = chunks.get(o.k);
+      dirty.delete(o.k);
+      if (ch) { buildChunkMesh(ch); m++; }
+    }
+  }
+}
+
+function resetWorld() {
+  for (const ch of chunks.values()) {
+    if (ch.group) {
+      for (const m of ch.group.children) m.geometry.dispose();
+      scene.remove(ch.group);
+    }
+  }
+  chunks.clear(); dirty.clear(); editsByChunk.clear();
+  genQueue = []; lastPC = null;
+  for (const id of [...avatars.keys()]) removeAvatar(id);
+}
+
+/* ============================================================
+   JUGADOR
+============================================================ */
+const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: false };
+let yaw = -2.36, pitch = -0.05;
+const PHALF = 0.3, PHEIGHT = 1.8, PEYE = 1.62;
+
+const blockAtF = (fx, fy, fz) => worldGetBlock(Math.floor(fx), Math.floor(fy), Math.floor(fz));
+const solidAt = id => id === -1 || isSolid(id);
+
+function moveAxis(axis, amount) {
+  if (!amount) return;
+  player[axis] += amount;
+  const minX = Math.floor(player.x - PHALF), maxX = Math.floor(player.x + PHALF);
+  const minY = Math.floor(player.y),         maxY = Math.floor(player.y + PHEIGHT);
+  const minZ = Math.floor(player.z - PHALF), maxZ = Math.floor(player.z + PHALF);
+  for (let by = minY; by <= maxY; by++) for (let bz = minZ; bz <= maxZ; bz++) for (let bx = minX; bx <= maxX; bx++) {
+    if (!solidAt(worldGetBlock(bx, by, bz))) continue;
+    if (axis === 'x') { player.x = amount > 0 ? bx - PHALF - 1e-4 : bx + 1 + PHALF + 1e-4; player.vx = 0; }
+    else if (axis === 'z') { player.z = amount > 0 ? bz - PHALF - 1e-4 : bz + 1 + PHALF + 1e-4; player.vz = 0; }
+    else {
+      if (amount > 0) player.y = by - PHEIGHT - 1e-4;
+      else { player.y = by + 1 + 1e-4; player.onGround = true; }
+      player.vy = 0;
+    }
+    return;
+  }
+}
+
+function physics(dt) {
+  const inFluid = isFluid(blockAtF(player.x, player.y + 0.4, player.z));
+  const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const speed = inFluid ? 2.8 : sprint ? 7.0 : 4.3;
+
+  let f = 0, r = 0;
+  if (keys.has('KeyW')) f++; if (keys.has('KeyS')) f--;
+  if (keys.has('KeyD')) r++; if (keys.has('KeyA')) r--;
+  let dx = -Math.sin(yaw) * f + Math.cos(yaw) * r;
+  let dz = -Math.cos(yaw) * f - Math.sin(yaw) * r;
+  const len = Math.hypot(dx, dz);
+  if (len > 0) { dx /= len; dz /= len; }
+
+  const k = (player.onGround || inFluid) ? 1 - Math.exp(-14 * dt) : 1 - Math.exp(-3.5 * dt);
+  player.vx += (dx * speed - player.vx) * k;
+  player.vz += (dz * speed - player.vz) * k;
+
+  if (inFluid) {
+    const want = keys.has('Space') ? 3.5 : -2.0;
+    player.vy += (want - player.vy) * (1 - Math.exp(-4 * dt));
+  } else {
+    if (keys.has('Space') && player.onGround) { player.vy = 8.2; }
+    player.vy -= 24 * dt;
+    if (player.vy < -38) player.vy = -38;
+  }
+
+  player.onGround = false;
+  const maxDisp = Math.max(Math.abs(player.vx), Math.abs(player.vy), Math.abs(player.vz)) * dt;
+  const steps = Math.max(1, Math.ceil(maxDisp / 0.4));
+  for (let i = 0; i < steps; i++) {
+    moveAxis('x', player.vx * dt / steps);
+    moveAxis('z', player.vz * dt / steps);
+    moveAxis('y', player.vy * dt / steps);
+  }
+  if (player.y < -12) respawn();
+}
+
+function respawn() {
+  player.x = SPAWN.x; player.z = SPAWN.z; player.y = 30;
+  player.vx = player.vy = player.vz = 0;
+}
+
+/* ============================================================
+   RAYCAST (DDA voxel)
+============================================================ */
+const _dir = new THREE.Vector3();
+function raycast(maxDist) {
+  camera.getWorldDirection(_dir);
+  const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
+  let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
+  const stepX = _dir.x > 0 ? 1 : -1, stepY = _dir.y > 0 ? 1 : -1, stepZ = _dir.z > 0 ? 1 : -1;
+  const tdX = Math.abs(1 / _dir.x), tdY = Math.abs(1 / _dir.y), tdZ = Math.abs(1 / _dir.z);
+  let tmX = _dir.x !== 0 ? (stepX > 0 ? (x + 1 - ox) : (ox - x)) * tdX : Infinity;
+  let tmY = _dir.y !== 0 ? (stepY > 0 ? (y + 1 - oy) : (oy - y)) * tdY : Infinity;
+  let tmZ = _dir.z !== 0 ? (stepZ > 0 ? (z + 1 - oz) : (oz - z)) * tdZ : Infinity;
+  let face = [0, 0, 0], t = 0;
+  while (t <= maxDist) {
+    const id = worldGetBlock(x, y, z);
+    if (id !== -1 && isSolid(id)) return { x, y, z, id, face };
+    if (tmX < tmY && tmX < tmZ) { x += stepX; t = tmX; tmX += tdX; face = [-stepX, 0, 0]; }
+    else if (tmY < tmZ)         { y += stepY; t = tmY; tmY += tdY; face = [0, -stepY, 0]; }
+    else                        { z += stepZ; t = tmZ; tmZ += tdZ; face = [0, 0, -stepZ]; }
+  }
+  return null;
+}
+
+function intersectsPlayer(bx, by, bz) {
+  return bx + 1 > player.x - PHALF && bx < player.x + PHALF &&
+         by + 1 > player.y && by < player.y + PHEIGHT &&
+         bz + 1 > player.z - PHALF && bz < player.z + PHALF;
+}
+
+function doAction(btn) {
+  const hit = raycast(6);
+  if (!hit) return;
+  if (btn === 0) {
+    if (hit.id !== B.BEDROCK) playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
+  } else if (btn === 2) {
+    const px = hit.x + hit.face[0], py = hit.y + hit.face[1], pz = hit.z + hit.face[2];
+    const cur = worldGetBlock(px, py, pz);
+    if (cur !== B.AIR && !isFluid(cur)) return;
+    if (intersectsPlayer(px, py, pz)) return;
+    playerSetBlock(px, py, pz, HOTBAR[sel]);
+  }
+}
+
+/* ============================================================
+   AVATARES (jugadores remotos)
+============================================================ */
+const avatars = new Map();   // id -> { group, head, sprite, t:{x,y,z}, yaw, pitch, name }
+
+function nameSprite(name) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  g.font = 'bold 36px Georgia';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,.85)';
+  g.strokeText(name, 128, 32);
+  g.fillStyle = '#fff';
+  g.fillText(name, 128, 32);
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, transparent: true, depthWrite: false }));
+  sp.scale.set(2.4, 0.6, 1);
+  return sp;
+}
+
+function addAvatar(id, name, color, x, y, z) {
+  if (avatars.has(id)) removeAvatar(id);
+  const col = new THREE.Color(color || '#4caf50');
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: col });
+  const headMat = new THREE.MeshLambertMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), 0.35) });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.85, 0.3), bodyMat);
+  body.position.y = 0.85;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), headMat);
+  head.position.y = 1.55;
+  const sprite = nameSprite(name || '???');
+  sprite.position.y = 2.15;
+  group.add(body, head, sprite);
+  group.position.set(x, y, z);
+  scene.add(group);
+  avatars.set(id, { group, head, sprite, t: { x, y, z }, yaw: 0, pitch: 0, name: name || '???' });
+}
+
+function removeAvatar(id) {
+  const a = avatars.get(id);
+  if (!a) return;
+  for (const m of a.group.children) {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) { if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
+  }
+  scene.remove(a.group);
+  avatars.delete(id);
+}
+
+function updateAvatars(dt) {
+  const k = 1 - Math.exp(-12 * dt);
+  for (const a of avatars.values()) {
+    a.group.position.x += (a.t.x - a.group.position.x) * k;
+    a.group.position.y += (a.t.y - a.group.position.y) * k;
+    a.group.position.z += (a.t.z - a.group.position.z) * k;
+    a.group.rotation.y = a.yaw;
+    a.head.rotation.x = -a.pitch * 0.7;
+  }
+}
+
+/* ============================================================
+   RED (PeerJS — P2P con código de sala)
+============================================================ */
+let peer = null, hostConn = null, netTimer = null;
+let isHost = false, isGuest = false;
+let roomCode = null, dayTick = 0;
+const conns = new Map();   // peerId -> { conn, name, color }
+
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const genCode = () => Array.from({ length: 5 }, () => CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]).join('');
+
+function netTickStart() {
+  if (netTimer) return;
+  netTimer = setInterval(() => {
+    if (isHost && conns.size) {
+      broadcast({ t: 'ppos', id: 'H', x: player.x, y: player.y, z: player.z, yaw, pitch });
+      if (++dayTick % 50 === 0) broadcast({ t: 'day', dayT });
+    } else if (isGuest && hostConn && hostConn.open) {
+      hostConn.send({ t: 'pos', x: player.x, y: player.y, z: player.z, yaw, pitch });
+    }
+  }, 100);
+}
+
+function broadcast(m, exceptId) {
+  for (const [id, g] of conns) if (id !== exceptId && g.conn.open) g.conn.send(m);
+}
+
+function hostGame(attempt = 0) {
+  if (typeof Peer === 'undefined') { toast('No se pudo cargar el módulo de red'); return; }
+  if (isHost || isGuest) return;
+  roomCode = genCode();
+  peer = new Peer('tmedia-' + roomCode);
+  peer.on('open', () => {
+    isHost = true;
+    netTickStart();
+    toast('Sala creada · código: ' + roomCode);
+    updateNetInfo(); refreshPause();
+  });
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id' && attempt < 4) {
+      try { peer.destroy(); } catch {}
+      hostGame(attempt + 1);
+    } else if (!isHost) {
+      toast('No se pudo crear la sala (' + err.type + ')');
+      roomCode = null; updateNetInfo(); refreshPause();
+    }
+  });
+  peer.on('connection', conn => {
+    conn.on('data', m => onHostData(conn, m));
+    conn.on('close', () => dropGuest(conn));
+    conn.on('error', () => dropGuest(conn));
+  });
+}
+
+function onHostData(conn, m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.t === 'hello') {
+    conns.set(conn.peer, { conn, name: m.name, color: m.color });
+    addAvatar(conn.peer, m.name, m.color, SPAWN.x, 24, SPAWN.z);
+    conn.send({
+      t: 'welcome', seed: SEED, dayT,
+      name: worldDisplayName,
+      edits: flattenEdits(),
+      players: [
+        { id: 'H', name: profile.name, color: profile.color, x: player.x, y: player.y, z: player.z },
+        ...[...conns.entries()].filter(([id]) => id !== conn.peer)
+          .map(([id, g]) => ({ id, name: g.name, color: g.color, x: SPAWN.x, y: 24, z: SPAWN.z })),
+      ],
+    });
+    broadcast({ t: 'pjoin', id: conn.peer, name: m.name, color: m.color, x: SPAWN.x, y: 24, z: SPAWN.z }, conn.peer);
+    toast((m.name || 'Alguien') + ' se ha unido a la partida');
+    updateNetInfo(); refreshPause();
+  } else if (m.t === 'pos') {
+    const a = avatars.get(conn.peer);
+    if (a) { a.t.x = m.x; a.t.y = m.y; a.t.z = m.z; a.yaw = m.yaw; a.pitch = m.pitch; }
+    broadcast({ t: 'ppos', id: conn.peer, x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch }, conn.peer);
+  } else if (m.t === 'set') {
+    netApplySet(m.x, m.y, m.z, m.id);
+    broadcast({ t: 'set', x: m.x, y: m.y, z: m.z, id: m.id }, conn.peer);
+  }
+}
+
+function dropGuest(conn) {
+  const g = conns.get(conn.peer);
+  if (!g) return;
+  conns.delete(conn.peer);
+  removeAvatar(conn.peer);
+  broadcast({ t: 'pleave', id: conn.peer });
+  toast((g.name || 'Alguien') + ' ha salido de la partida');
+  updateNetInfo(); refreshPause();
+}
+
+let joinTimeout = null;
+function joinGame(code) {
+  if (typeof Peer === 'undefined') { joinStatus('No se pudo cargar el módulo de red'); return; }
+  shutdownNet();
+  joinStatus('Conectando con la sala ' + code + '…');
+  joinTimeout = setTimeout(() => { joinStatus('No se pudo conectar. Revisa el código.'); shutdownNet(); }, 15000);
+  peer = new Peer();
+  peer.on('error', err => {
+    clearTimeout(joinTimeout);
+    joinStatus(err.type === 'peer-unavailable'
+      ? 'No existe ninguna sala con ese código.'
+      : 'Error de red: ' + err.type);
+  });
+  peer.on('open', () => {
+    hostConn = peer.connect('tmedia-' + code, { reliable: true });
+    hostConn.on('open', () => hostConn.send({ t: 'hello', name: profile.name, color: profile.color }));
+    hostConn.on('data', m => onGuestData(m, code));
+    hostConn.on('close', () => {
+      if (inWorld && isGuest) {
+        toast('Se perdió la conexión con el anfitrión');
+        exitWorld();
+      }
+    });
+  });
+}
+
+function onGuestData(m, code) {
+  if (!m || typeof m !== 'object') return;
+  if (m.t === 'welcome') {
+    clearTimeout(joinTimeout);
+    joinStatus('');
+    const byChunk = {};
+    for (const [x, y, z, id] of m.edits) {
+      const ck = (x >> 4) + ',' + (z >> 4);
+      (byChunk[ck] = byChunk[ck] || []).push([x & 15, y, z & 15, id]);
+    }
+    isGuest = true;
+    roomCode = code;
+    startWorld({ name: m.name || 'Partida remota', seed: m.seed }, { dayT: m.dayT, edits: byChunk }, 'guest');
+    for (const p of m.players) addAvatar(p.id, p.name, p.color, p.x, p.y, p.z);
+    netTickStart();
+    updateNetInfo();
+  } else if (m.t === 'set') {
+    netApplySet(m.x, m.y, m.z, m.id);
+  } else if (m.t === 'ppos') {
+    const a = avatars.get(m.id);
+    if (a) { a.t.x = m.x; a.t.y = m.y; a.t.z = m.z; a.yaw = m.yaw; a.pitch = m.pitch; }
+  } else if (m.t === 'pjoin') {
+    addAvatar(m.id, m.name, m.color, m.x, m.y, m.z);
+    toast((m.name || 'Alguien') + ' se ha unido a la partida');
+    updateNetInfo();
+  } else if (m.t === 'pleave') {
+    const a = avatars.get(m.id);
+    if (a) { toast(a.name + ' ha salido de la partida'); removeAvatar(m.id); updateNetInfo(); }
+  } else if (m.t === 'day') {
+    dayT = m.dayT;
+  }
+}
+
+function shutdownNet() {
+  if (netTimer) { clearInterval(netTimer); netTimer = null; }
+  if (joinTimeout) { clearTimeout(joinTimeout); joinTimeout = null; }
+  if (peer) { try { peer.destroy(); } catch {} peer = null; }
+  conns.clear(); hostConn = null;
+  isHost = false; isGuest = false; roomCode = null;
+  for (const id of [...avatars.keys()]) removeAvatar(id);
+  updateNetInfo();
+}
+
+/* ============================================================
+   PERFIL Y GUARDADO (localStorage)
+============================================================ */
+function lsGet(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+const PALETTE = ['#4caf50', '#d4af37', '#4a7fd4', '#c0463e', '#8e5fc0', '#9e9e9e'];
+let profile = Object.assign({ name: 'Viajero', color: PALETTE[0] }, lsGet('tm_profile', {}));
+const saveProfile = () => lsSet('tm_profile', profile);
+
+let worlds = lsGet('tm_worlds', []);
+const saveWorldsList = () => lsSet('tm_worlds', worlds);
+
+let inWorld = false, currentWorld = null, saveDirty = false, worldDisplayName = '';
+
+function saveWorld() {
+  if (!currentWorld || isGuest) return;
+  const edits = {};
+  for (const [ck, m] of editsByChunk) {
+    if (!m.size) continue;
+    edits[ck] = [...m.entries()].map(([k, id]) => {
+      const [lx, ly, lz] = k.split(',').map(Number);
+      return [lx, ly, lz, id];
+    });
+  }
+  lsSet('tm_world_' + currentWorld.id, {
+    dayT,
+    player: { x: player.x, y: player.y, z: player.z, yaw, pitch },
+    edits,
+  });
+  currentWorld.last = Date.now();
+  const i = worlds.findIndex(w => w.id === currentWorld.id);
+  if (i >= 0) worlds[i] = currentWorld;
+  saveWorldsList();
+  saveDirty = false;
+}
+
+setInterval(() => { if (inWorld && saveDirty) saveWorld(); }, 8000);
+window.addEventListener('beforeunload', () => { if (inWorld) saveWorld(); });
+
+/* ============================================================
+   FLUJO DE PARTIDA
+============================================================ */
+function startWorld(meta, data, mode) {
+  resetWorld();
+  SEED = meta.seed | 0;
+  dayT = data?.dayT ?? 0.22;
+  if (data?.edits) {
+    for (const [ck, list] of Object.entries(data.edits)) {
+      const m = new Map();
+      for (const [lx, ly, lz, id] of list) m.set(lx + ',' + ly + ',' + lz, id);
+      editsByChunk.set(ck, m);
+    }
+  }
+  isGuest = mode === 'guest';
+  currentWorld = isGuest ? null : meta;
+  worldDisplayName = meta.name || 'Tierra Media';
+
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) genChunk(dx, dz);
+
+  const p = data?.player;
+  player.x = p?.x ?? SPAWN.x + (isGuest ? 2.5 : 0);
+  player.y = p?.y ?? 26;
+  player.z = p?.z ?? SPAWN.z;
+  player.vx = player.vy = player.vz = 0;
+  yaw = p?.yaw ?? -2.36; pitch = p?.pitch ?? -0.05;
+
+  inWorld = true; saveDirty = false;
+  document.body.classList.add('ingame');
+  showScreen('pause');
+  updateNetInfo();
+}
+
+function exitWorld() {
+  if (inWorld) saveWorld();
+  shutdownNet();
+  inWorld = false; currentWorld = null; worldDisplayName = '';
+  resetWorld();
+  document.body.classList.remove('ingame');
+  showScreen('main');
+}
+
+/* ============================================================
+   MENÚS
+============================================================ */
+let menuScreen = 'main', worldsMode = 'sp';
+
+function showScreen(s) {
+  menuScreen = s;
+  $('menu').style.display = s ? 'flex' : 'none';
+  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause'])
+    $(id).style.display = (id === 'scr-' + s) ? 'flex' : 'none';
+  if (s === 'pause') refreshPause();
+  if (s === 'worlds') renderWorldList();
+}
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+function renderWorldList() {
+  $('worlds-title').textContent = worldsMode === 'host' ? 'ELIGE MUNDO PARA LA SALA' : 'TUS MUNDOS';
+  const box = $('world-list');
+  box.innerHTML = '';
+  if (!worlds.length) {
+    box.innerHTML = '<div class="empty">Aún no hay mundos — crea uno abajo.</div>';
+    return;
+  }
+  for (const w of [...worlds].sort((a, b) => b.last - a.last)) {
+    const row = document.createElement('div'); row.className = 'wrow';
+    const info = document.createElement('div'); info.className = 'winfo';
+    info.innerHTML = `<b>${esc(w.name)}</b><span>${new Date(w.last).toLocaleString('es')}</span>`;
+    const play = document.createElement('button'); play.className = 'mbtn small';
+    play.textContent = worldsMode === 'host' ? 'Crear sala' : 'Jugar';
+    play.onclick = () => enterWorld(w);
+    const del = document.createElement('button'); del.className = 'mbtn small danger'; del.textContent = '✕';
+    del.onclick = () => {
+      if (!confirm(`¿Borrar el mundo "${w.name}" para siempre?`)) return;
+      worlds = worlds.filter(x => x.id !== w.id);
+      try { localStorage.removeItem('tm_world_' + w.id); } catch {}
+      saveWorldsList(); renderWorldList();
+    };
+    row.append(info, play, del);
+    box.append(row);
+  }
+}
+
+function enterWorld(w) {
+  const data = lsGet('tm_world_' + w.id, null);
+  startWorld(w, data, 'sp');
+  if (worldsMode === 'host') hostGame();
+}
+
+function refreshPause() {
+  $('pause-title').textContent = worldDisplayName.toUpperCase();
+  const net = $('pause-net');
+  if (roomCode && isHost) {
+    net.innerHTML = `Código de sala: <b>${roomCode}</b><br>${conns.size + 1} jugador(es) en línea — comparte el código`;
+  } else if (roomCode && isGuest) {
+    net.textContent = `Conectado a la sala ${roomCode}`;
+  } else if (isGuest) {
+    net.textContent = '';
+  } else {
+    net.textContent = 'Partida local';
+  }
+  $('btn-pause-host').style.display = (!isHost && !isGuest && inWorld) ? 'block' : 'none';
+  $('btn-copy').style.display = (roomCode && isHost) ? 'block' : 'none';
+  $('btn-exit').textContent = isGuest ? '🚪 Salir de la partida' : '💾 Guardar y salir al menú';
+}
+
+function joinStatus(s) { $('join-status').textContent = s; }
+
+/* ----- cableado de la interfaz ----- */
+$('pname').value = profile.name;
+$('pname').addEventListener('input', () => { profile.name = $('pname').value.trim() || 'Viajero'; saveProfile(); });
+
+for (const col of PALETTE) {
+  const sw = document.createElement('div');
+  sw.className = 'swatch' + (col === profile.color ? ' sel' : '');
+  sw.style.background = col;
+  sw.onclick = () => {
+    profile.color = col; saveProfile();
+    document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('sel', s === sw));
+  };
+  $('colors').append(sw);
+}
+
+$('btn-sp').onclick   = () => { worldsMode = 'sp';   showScreen('worlds'); };
+$('btn-host').onclick = () => { worldsMode = 'host'; showScreen('worlds'); };
+$('btn-join').onclick = () => { joinStatus(''); showScreen('join'); };
+$('btn-worlds-back').onclick = () => showScreen('main');
+$('btn-join-back').onclick   = () => { shutdownNet(); showScreen('main'); };
+
+$('btn-newworld').onclick = () => {
+  const name = $('wname').value.trim() || 'Tierra Media';
+  const w = { id: Date.now().toString(36) + ((Math.random() * 1e4) | 0), name, seed: (Math.random() * 0x7fffffff) | 0, created: Date.now(), last: Date.now() };
+  worlds.push(w); saveWorldsList();
+  $('wname').value = '';
+  enterWorld(w);
+};
+$('wname').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-newworld').click(); });
+
+$('btn-connect').onclick = () => {
+  const code = $('jcode').value.trim().toUpperCase();
+  if (code.length !== 5) { joinStatus('El código tiene 5 caracteres.'); return; }
+  joinGame(code);
+};
+$('jcode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-connect').click(); });
+
+$('scr-pause').addEventListener('click', e => {
+  if (e.target.closest('button, input')) return;
+  if (inWorld) canvas.requestPointerLock();
+});
+$('btn-exit').onclick = () => exitWorld();
+$('btn-pause-host').onclick = () => { hostGame(); refreshPause(); };
+$('btn-copy').onclick = () => {
+  if (roomCode) navigator.clipboard?.writeText(roomCode).then(() => toast('Código copiado: ' + roomCode));
+};
+
+/* ============================================================
+   HUD
+============================================================ */
+let sel = 0;
+const toastEl = $('toast');
+let toastTimer = null;
+function toast(text) {
+  toastEl.textContent = text;
+  toastEl.style.opacity = 1;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.style.opacity = 0, 1600);
+}
+
+const hotbarEl = $('hotbar');
+HOTBAR.forEach((id, i) => {
+  const slot = document.createElement('div');
+  slot.className = 'slot' + (i === 0 ? ' sel' : '');
+  const ic = document.createElement('canvas');
+  ic.width = ic.height = 32;
+  const g = ic.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  const tile = TILE_MAP[id].all !== undefined ? TILE_MAP[id].all : TILE_MAP[id].side;
+  g.drawImage(atlasCanvas, (tile % ACOLS) * T, ((tile / ACOLS) | 0) * T, T, T, 0, 0, 32, 32);
+  const num = document.createElement('div');
+  num.className = 'num'; num.textContent = i + 1;
+  slot.appendChild(ic); slot.appendChild(num);
+  hotbarEl.appendChild(slot);
+});
+function selectSlot(i) {
+  sel = i;
+  [...hotbarEl.children].forEach((s, j) => s.classList.toggle('sel', j === i));
+  toast(NAMES[HOTBAR[i]]);
+}
+
+function updateNetInfo() {
+  const el = $('netinfo');
+  if (roomCode && isHost) el.textContent = `⚿ Sala ${roomCode} · ${conns.size + 1} en línea`;
+  else if (roomCode && isGuest) el.textContent = `⚿ Sala ${roomCode} · ${avatars.size + 1} en línea`;
+  else el.textContent = '';
+}
+
+const biomeEl = $('biome');
+const coordsEl = $('coords');
+let hudT = 0;
+function updateHUD(now) {
+  if (now - hudT < 250) return;
+  hudT = now;
+  const b = biomeAt(Math.floor(player.x), Math.floor(player.z));
+  biomeEl.textContent = BIOME_NAME[b];
+  coordsEl.textContent = `x ${player.x.toFixed(0)}  y ${player.y.toFixed(0)}  z ${player.z.toFixed(0)}`;
+}
+
+/* ============================================================
+   ENTRADA
+============================================================ */
+const keys = new Set();
+let locked = false;
+let heldBtn = null, heldT = 0;
+
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (locked) showScreen(null);
+  else if (inWorld) { showScreen('pause'); saveWorld(); }
+  keys.clear(); heldBtn = null;
+});
+document.addEventListener('mousemove', e => {
+  if (!locked) return;
+  yaw -= e.movementX * 0.0022;
+  pitch -= e.movementY * 0.0022;
+  pitch = Math.max(-1.55, Math.min(1.55, pitch));
+});
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && locked) e.preventDefault();
+  keys.add(e.code);
+  if (e.code === 'KeyR' && locked) respawn();
+  if (locked && e.code.startsWith('Digit')) {
+    const n = +e.code.slice(5);
+    if (n >= 1 && n <= 9) selectSlot(n - 1);
+  }
+});
+document.addEventListener('keyup', e => keys.delete(e.code));
+window.addEventListener('blur', () => keys.clear());
+document.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousedown', e => {
+  if (!locked) return;
+  doAction(e.button);
+  heldBtn = e.button; heldT = performance.now();
+});
+document.addEventListener('mouseup', () => heldBtn = null);
+document.addEventListener('wheel', e => {
+  if (!locked) return;
+  selectSlot((sel + (e.deltaY > 0 ? 1 : -1) + 9) % 9);
+});
+
+/* ============================================================
+   CICLO DÍA / NOCHE
+============================================================ */
+let dayT = 0.22;            // 0..1, día completo = 300 s
+const DAY_LEN = 300;
+const sunDir = new THREE.Vector3();
+const COL_DAY = new THREE.Color(0x8ab4dd), COL_NIGHT = new THREE.Color(0x0a0e1e);
+const COL_DAWN = new THREE.Color(0xd9854e), COL_MORDOR = new THREE.Color(0x35221d);
+const _sky = new THREE.Color();
+let fogNear = RD * 16 * 0.62, fogFar = RD * 16 * 1.05;
+
+function updateSky(dt, time) {
+  dayT = (dayT + dt / DAY_LEN) % 1;
+  const ang = dayT * Math.PI * 2;
+  sunDir.set(Math.cos(ang), Math.sin(ang), 0.25).normalize();
+  const s = sunDir.y;
+
+  _sky.copy(COL_NIGHT).lerp(COL_DAY, smoothstep(-0.12, 0.35, s));
+  const dawnAmt = Math.max(0, 1 - Math.abs(s) / 0.28) * 0.55;
+  _sky.lerp(COL_DAWN, dawnAmt);
+
+  const inMordor = inWorld && biomeAt(Math.floor(player.x), Math.floor(player.z)) === BIOME.MORDOR;
+  let tNear = RD * 16 * 0.62, tFar = RD * 16 * 1.05;
+  if (inMordor) { _sky.lerp(COL_MORDOR, 0.82); tNear = 14; tFar = 62; }
+
+  const lk = 1 - Math.exp(-1.6 * dt);
+  skyColor.lerp(_sky, lk);
+  fogNear = lerp(fogNear, tNear, lk);
+  fogFar = lerp(fogFar, tFar, lk);
+  scene.fog.near = fogNear; scene.fog.far = fogFar;
+
+  dirLight.intensity = s > 0 ? 0.35 + 2.0 * s : 0.18;
+  const ld = s > 0 ? 1 : -1;
+  dirLight.position.copy(camera.position).addScaledVector(sunDir, 180 * ld);
+  dirLight.target.position.copy(camera.position);
+  hemi.intensity = 0.28 + 0.7 * Math.max(0, s);
+
+  sun.position.copy(camera.position).addScaledVector(sunDir, 380);
+  moon.position.copy(camera.position).addScaledVector(sunDir, -380);
+  sun.material.opacity = smoothstep(-0.12, 0.04, s);
+  moon.material.opacity = smoothstep(-0.04, 0.12, -s);
+
+  eyeLight.intensity = 900 + Math.sin(time * 7) * 220 + Math.sin(time * 13.7) * 140;
+}
+
+/* ============================================================
+   BUCLE PRINCIPAL
+============================================================ */
+let prevT = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - prevT) / 1000);
+  prevT = now;
+  const time = now / 1000;
+
+  if (inWorld) {
+    updateChunks();
+    if (locked) {
+      physics(dt);
+      if (heldBtn !== null && now - heldT > 240) { doAction(heldBtn); heldT = now; }
+    }
+    updateAvatars(dt);
+    updateHUD(now);
+  }
+  camera.position.set(player.x, player.y + PEYE, player.z);
+  camera.rotation.set(pitch, yaw, 0);
+
+  updateSky(dt, time);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+showScreen('main');
+
+// utilidades de depuración
+window.G = {
+  player, chunks, avatars,
+  tp(x, y, z) { player.x = x; player.y = y; player.z = z; player.vx = player.vy = player.vz = 0; },
+  look(y, p) { yaw = y; pitch = p; },
+  setDay(t) { dayT = t; },
+  setBlock: playerSetBlock, getBlock: worldGetBlock, raycast, doAction,
+  saveNow: saveWorld, exitWorld, hostGame, joinGame,
+  net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
+};
+</script>
+</body>
+</html>
