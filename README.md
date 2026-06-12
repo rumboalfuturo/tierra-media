@@ -25,11 +25,26 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 | W A S D | moverte |
 | Espacio | saltar / nadar |
 | Shift | correr |
-| Clic izquierdo | romper bloque |
-| Clic derecho | colocar bloque |
-| 1–9 / rueda | elegir bloque |
+| Mantener clic izq | picar el bloque (barra de progreso) |
+| Clic derecho | colocar material / abrir cofre |
+| 1–5 | herramientas: mano, pico, pala, hacha, cubo |
+| 6–9 | huecos de materiales |
+| E | inventario y fabricación |
 | R | volver a La Comarca |
 | Esc | menú |
+
+## Herramientas, inventario y cofres
+
+- **Pico** para piedra, **pala** para tierra/arena, **hacha** para madera — con la herramienta adecuada picas 4 veces más rápido.
+- Lo que picas va a tu **inventario** (tecla E); desde ahí asignas materiales a los huecos 6–9 y fabricas: 1 tronco → 4 tablones, 8 tablones → 1 cofre.
+- Los **cofres** se colocan y se abren con clic derecho; guardan materiales y se comparten entre jugadores. El del agujero hobbit trae regalo.
+- El **cubo** recoge agua y lava de lagos (clic izq) para colocarlas después como materiales.
+
+## Reacciones realistas
+
+- La **lava quema** la hierba que toca (la deja en tierra) y prende madera y hojas: los árboles arden con fuego que se propaga.
+- El **agua enfría la lava** y la convierte en piedra.
+- El fuego se puede apagar de un golpe de clic.
 
 ## El mundo
 
