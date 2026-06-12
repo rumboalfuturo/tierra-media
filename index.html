@@ -287,7 +287,9 @@ const B = {
   MLOG:7, MLEAVES:8, MROCK:9, LAVA:10, WATER:11, SAND:12,
   MITHRIL:13, DBRICK:14, PLANK:15, COBBLE:16, BEDROCK:17,
   CHEST:18, FIRE:19, WSTONE:20,
+  DOORX:21, DOORXO:22, DOORZ:23, DOORZO:24,   // puertas: cerrada/abierta × eje
 };
+const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
 const NAMES = {
   [B.GRASS]:'Hierba', [B.DIRT]:'Tierra', [B.STONE]:'Piedra', [B.SNOW]:'Nieve',
   [B.LOG]:'Tronco de roble', [B.LEAVES]:'Hojas de roble', [B.MLOG]:'Tronco de mallorn',
@@ -295,6 +297,8 @@ const NAMES = {
   [B.WATER]:'Agua', [B.SAND]:'Arena', [B.MITHRIL]:'Mithril',
   [B.DBRICK]:'Ladrillo de Barad-dûr', [B.PLANK]:'Tablones', [B.COBBLE]:'Piedra labrada',
   [B.BEDROCK]:'Roca madre', [B.CHEST]:'Cofre', [B.FIRE]:'Fuego', [B.WSTONE]:'Piedra blanca',
+  [B.DOORX]:'Puerta de madera', [B.DOORXO]:'Puerta de madera',
+  [B.DOORZ]:'Puerta de madera', [B.DOORZO]:'Puerta de madera',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -308,17 +312,19 @@ const TOOLS = [
 const NMAT = 4;
 // materiales que se pueden tener en el inventario
 const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
-                   B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.CHEST, B.WATER, B.LAVA];
+                   B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.CHEST, B.DOORX, B.WATER, B.LAVA];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
-const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0 };
-const FLAMMABLE = new Set([B.GRASS, B.LEAVES, B.MLEAVES, B.LOG, B.MLOG, B.PLANK, B.CHEST]);
+const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
+                [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX };
+const FLAMMABLE = new Set([B.GRASS, B.LEAVES, B.MLEAVES, B.LOG, B.MLOG, B.PLANK, B.CHEST,
+                           B.DOORX, B.DOORXO, B.DOORZ, B.DOORZO]);
 
 const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3 };
 const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor'];
 
 const isFluid  = id => id === B.WATER || id === B.LAVA;
-const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE;
-const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE;
+const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.DOORXO && id !== B.DOORZO;
+const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || isDoorId(id);
 
 /* ============================================================
    RUIDO (value noise + fBm, determinista)
@@ -367,6 +373,7 @@ function biomeAt(wx, wz) {
   if (Math.hypot(wx - MTIR.x, wz - MTIR.z) < 50)   return BIOME.SHIRE;   // los campos del Pelennor
   if (Math.hypot(wx - ISEN.x, wz - ISEN.z) < 34)   return BIOME.SHIRE;
   if (Math.hypot(wx - HELM.x, wz - 225) < 38)      return BIOME.MOUNTAIN; // la roca tras el Muro
+  if (Math.hypot(wx - 215, wz - 30) < 32)          return BIOME.LOTHLORIEN; // el Bosque Dorado
   if (ridgeAt(wx, wz) > 0.45) return BIOME.MOUNTAIN;
   const b = biomeNoise(wx, wz);
   if (b > 0.30)  return BIOME.MOUNTAIN;
@@ -385,6 +392,7 @@ function heightAt(wx, wz) {
     h += m * fbm(wx * 0.055, wz * 0.055, SEED + 8, 3) * 7;   // crestas y rocas
   }
   h += 26 * smoothstep(45, 10, Math.hypot(wx - HELM.x, wz - 225));   // la roca tras el Abismo de Helm
+  h += 24 * smoothstep(30, 8, Math.hypot(wx - 60, wz - 208));        // y la ladera este que ancla el Muro
   if (biomeAt(wx, wz) === BIOME.MORDOR) {
     const p = fbm(wx * 0.03, wz * 0.03, SEED + 3, 3);
     if (p > 0.38) h = Math.min(h, 13.6);   // lagos de lava
@@ -405,6 +413,11 @@ function heightAt(wx, wz) {
   if (wx <= 146) {                                     // la explanada ante la Puerta de Moria
     const dD = Math.hypot(wx - 146, wz - MORIA.z);
     if (dD < 26) h = lerp(21.5, h, smoothstep(12, 26, dD));
+  }
+  // el río Anduin, serpenteando de norte a sur al este de las montañas
+  if (wz < 260) {
+    const riv = Math.abs(wx - (252 + 26 * Math.sin(wz * 0.012)));
+    if (riv < 5) h = Math.min(h, riv > 3.5 ? 15 : 13);
   }
   return Math.max(2, Math.min(WH - 10, Math.floor(h)));
 }
@@ -723,6 +736,8 @@ function genStructures(data, cx, cz) {
       if (hdz === 0 && hdx <= -2 && hdx >= -5) { set(lx, ground + 1, lz, B.AIR); set(lx, ground + 2, lz, B.AIR); }
       if (Math.abs(hdz) === 1 && hdx === -4) { set(lx, ground + 1, lz, B.LOG); set(lx, ground + 2, lz, B.LOG); }
       if (Math.abs(hdz) <= 1 && hdx === -4) set(lx, ground + 3, lz, B.LOG);
+      if (hdz === 0 && hdx === -4) { set(lx, ground + 1, lz, B.DOORX); set(lx, ground + 2, lz, B.DOORX); }  // la puerta
+
       if (hdx === 2 && hdz === 0) set(lx, ground + 1, lz, B.CHEST);   // cofre con regalo
     }
 
@@ -739,45 +754,105 @@ function genStructures(data, cx, cz) {
         for (let y = 22; y <= 26; y++) set(lx, y, lz, B.AIR);
         set(lx, 21, lz, B.STONE);
       }
-      if (wx === 140 && wz >= -33 && wz <= -27) {                      // las Puertas de Durin
-        if (wz === -33 || wz === -27) for (let y = 22; y <= 27; y++) set(lx, y, lz, B.DBRICK);
-        set(lx, 28, lz, B.DBRICK);
-        if (wz === -30) set(lx, 29, lz, B.MITHRIL);
+      if (wx === 140 && wz >= -34 && wz <= -26) {                      // las Puertas de Durin
+        if (wz === -34 || wz === -26) for (let y = 22; y <= 27; y++) set(lx, y, lz, B.DBRICK);
+        set(lx, 27, lz, (wz === -34 || wz === -26) ? B.MITHRIL : B.DBRICK);   // dintel sobre las jambas
+        if (wz >= -32 && wz <= -28) set(lx, 28, lz, B.MITHRIL);        // el arco de ithildin
+        if (wz === -30) set(lx, 29, lz, B.MITHRIL);                    // la estrella de Fëanor
       }
+      if (wx === 141 && wz >= -31 && wz <= -29)                        // las puertas dobles
+        for (let y = 22; y <= 24; y++) set(lx, y, lz, B.DOORX);
+      if (wx === 138 && (wz === -36 || wz === -24)) {                  // los dos acebos
+        for (let y = 22; y <= 26; y++) set(lx, y, lz, B.LOG);
+        set(lx, 27, lz, B.LEAVES);
+      }
+      if ((wx === 137 || wx === 139) && (wz === -36 || wz === -24))
+        for (let y = 25; y <= 26; y++) set(lx, y, lz, B.LEAVES);
+      if (wx === 138 && (wz === -37 || wz === -35 || wz === -25 || wz === -23))
+        for (let y = 25; y <= 26; y++) set(lx, y, lz, B.LEAVES);
     }
 
-    // --- Isengard: anillo, suelo calcinado y Orthanc ---
+    // --- Isengard: anillo, casa-puerta, suelo calcinado y Orthanc ---
     const idx = wx - ISEN.x, idz = wz - ISEN.z, idd = Math.hypot(idx, idz);
     if (idd <= 30) {
       set(lx, 21, lz, B.MROCK);
       if (idd < 24 && hash2(wx, wz, SEED + 21) < 0.008) set(lx, 21, lz, B.LAVA);   // fosas de las máquinas
-      if (idd >= 26 && idd <= 28 && !(idz < 0 && Math.abs(idx) <= 2)) {            // muralla con puerta al norte
+      if (idd >= 26 && idd <= 28 && !(idz < 0 && Math.abs(idx) <= 2)) {            // muralla con hueco al norte
         const top = 27 + ((wx + wz) & 1);
         for (let y = 22; y <= top; y++) set(lx, y, lz, B.MROCK);
       }
-      if (Math.abs(idx) <= 3 && Math.abs(idz) <= 3) {                              // Orthanc
-        const horn = Math.abs(idx) === 3 && Math.abs(idz) === 3;
-        for (let y = 22; y <= (horn ? 54 : 50); y++) set(lx, y, lz, B.DBRICK);
+      // torres gemelas de la casa-puerta
+      if (Math.hypot(Math.abs(idx) - 4, idz + 27) <= 2.2) {
+        for (let y = 22; y <= 33; y++) set(lx, y, lz, B.MROCK);
+        if ((wx + wz) % 2 === 0) set(lx, 34, lz, B.MROCK);
+      }
+      // el portón de madera
+      if (Math.abs(idx) <= 1 && idz === -27)
+        for (let y = 22; y <= 25; y++) set(lx, y, lz, B.DOORZ);
+      // Orthanc: monolito negro escalonado con sus cuatro cuernos
+      if (Math.abs(idx) <= 4 && Math.abs(idz) <= 4) {
+        const r = Math.max(Math.abs(idx), Math.abs(idz));
+        let top = r <= 1 ? 52 : r <= 2 ? 52 : r <= 3 ? 42 : 30;
+        if (Math.abs(idx) === 2 && Math.abs(idz) === 2) top = 56;                  // los cuernos
+        for (let y = 22; y <= top; y++) set(lx, y, lz, B.DBRICK);
       }
     }
 
-    // --- El Abismo de Helm: el Muro del Bajo y Cuernavilla ---
-    if (wx >= 8 && wx <= 52 && wz >= 188 && wz <= 191) {
-      for (let y = 22; y <= 29; y++) set(lx, y, lz, B.COBBLE);
-      if (((wx & 1) === 0) && wz === 188) set(lx, 30, lz, B.COBBLE);   // almenas
-      if (wx >= 29 && wx <= 31) { set(lx, 22, lz, B.AIR); set(lx, 23, lz, B.AIR); }  // la alcantarilla
+    // --- El Abismo de Helm ---
+    if (wx >= 2 && wx <= 60 && wz >= 175 && wz <= 206) {
+      // el Muro del Bajo: arco que se comba hacia el valle, con adarve y parapeto
+      if (wx >= 19 && wx <= 58) {
+        const wallZ = 189 - Math.round(3.5 * Math.sin((wx - 19) / 39 * Math.PI));
+        if (wz >= wallZ && wz <= wallZ + 1) {
+          for (let y = 22; y <= 29; y++) set(lx, y, lz, B.COBBLE);     // cuerpo del muro (adarve en 29)
+          if (wz === wallZ) {
+            set(lx, 30, lz, B.COBBLE);                                 // parapeto exterior
+            if ((wx & 1) === 0) set(lx, 31, lz, B.COBBLE);             // almenas
+          }
+          if (wx >= 43 && wx <= 45) { set(lx, 22, lz, B.AIR); set(lx, 23, lz, B.AIR); }  // la alcantarilla
+        }
+        if (wz === wallZ + 2) for (let y = 22; y <= 28; y++) set(lx, y, lz, B.COBBLE);   // escalera-respaldo
+      }
+      // el espolón de roca de la Cuernavilla
+      const kd = Math.hypot(wx - 14, wz - 196);
+      if (kd <= 9) {
+        for (let y = 22; y <= 27; y++) set(lx, y, lz, B.STONE);
+        set(lx, 28, lz, B.STONE);                                       // explanada superior
+      }
+      // muralla anular sobre el espolón, con su portón al norte
+      if (kd >= 7 && kd <= 8.6) {
+        const isGate = Math.abs(wx - 14) <= 1 && wz < 196;
+        if (!isGate) {
+          for (let y = 29; y <= 34; y++) set(lx, y, lz, B.COBBLE);
+          if ((wx + wz) % 2 === 0) set(lx, 35, lz, B.COBBLE);           // almenas
+        }
+      }
+      // torre del homenaje y la torre del Cuerno
+      if (kd <= 4) {
+        for (let y = 29; y <= 40; y++) set(lx, y, lz, B.COBBLE);
+        if ((wx + wz) % 2 === 0) set(lx, 41, lz, B.COBBLE);
+      }
+      if (Math.hypot(wx - 10, wz - 192) <= 1.9) {
+        for (let y = 29; y <= 46; y++) set(lx, y, lz, B.COBBLE);
+        set(lx, 47, lz, B.MITHRIL);                                     // el Gran Cuerno
+      }
+      // la calzada que sube al portón
+      if (Math.abs(wx - 14) <= 1 && wz >= 178 && wz <= 188) {
+        const rampH = Math.round(22 + (wz - 178) * 0.6);                // 22 → 28
+        for (let y = 22; y <= rampH; y++) set(lx, y, lz, B.STONE);
+        if (Math.abs(wx - 14) === 1 && rampH < 28) set(lx, rampH + 1, lz, B.COBBLE);  // pretiles
+      }
+      // el portón de madera de la Cuernavilla
+      if (Math.abs(wx - 14) <= 1 && wz === 189)
+        for (let y = 29; y <= 31; y++) set(lx, y, lz, B.DOORZ);
     }
-    const hkd = Math.hypot(wx - 14, wz - 197);
-    if (hkd <= 5) for (let y = 22; y <= (hkd <= 2 ? 38 : 33 + ((wx + wz) & 1)); y++) set(lx, y, lz, B.COBBLE);
-    const hkd2 = Math.hypot(wx - 48, wz - 195);
-    if (hkd2 <= 3) for (let y = 22; y <= 30 + ((wx + wz) & 1); y++) set(lx, y, lz, B.COBBLE);
 
-    // --- Minas Tirith: siete niveles blancos y la Torre de Ecthelion ---
+    // --- Minas Tirith: siete niveles blancos, el espolón de proa y la Torre de Ecthelion ---
     const mdx = wx - MTIR.x, mdz = wz - MTIR.z, md = Math.hypot(mdx, mdz);
     if (md <= 32.5) {
       const gate = Math.abs(mdx) <= 1 && mdz > 2;                      // corredor de entrada al sur
       if (gate) {
-        const ramp = Math.min(42, Math.round(22 + (32 - md) * 0.78));
+        const ramp = md >= 30 ? 22 : Math.min(42, Math.round(22 + (32 - md) * 0.78));
         for (let y = 22; y <= ramp; y++) set(lx, y, lz, B.WSTONE);
       } else {
         const tier = Math.min(6, Math.floor((32.5 - md) / 4.5));
@@ -787,8 +862,23 @@ function genStructures(data, cx, cz) {
           for (let y = g; y <= g + 3 + ((wx + wz) & 1); y++) set(lx, y, lz, B.WSTONE);
         }
       }
+      // el espolón de roca que parte la ciudad (la "proa" hacia el norte)
+      if (Math.abs(mdx) <= 1 && mdz <= -4) {
+        const prow = Math.round(46 + mdz * 0.62);                      // se afila al alejarse
+        for (let y = 22; y <= prow; y++) set(lx, y, lz, B.WSTONE);
+      }
       if (md <= 2.6) for (let y = 42; y <= 57; y++) set(lx, y, lz, B.WSTONE);   // la Torre Blanca
       if (md <= 1.2) { set(lx, 58, lz, B.WSTONE); set(lx, 59, lz, B.MITHRIL); }
+    }
+    // la Gran Puerta, en la muralla exterior
+    if (Math.abs(mdx) <= 1 && mdz === 31) {
+      for (let y = 23; y <= 25; y++) set(lx, y, lz, B.DOORZ);
+      set(lx, 26, lz, B.WSTONE); set(lx, 27, lz, B.WSTONE);            // el arco
+    }
+    // el puente de Osgiliath sobre el Anduin
+    if (Math.abs(wz - 233) <= 1 && wx >= 250 && wx <= 272) {
+      for (let y = 14; y <= 16; y++) set(lx, y, lz, B.WSTONE);
+      if (Math.abs(wz - 233) === 1 && (wx & 3) === 0) set(lx, 17, lz, B.WSTONE);   // pretiles
     }
   }
 }
@@ -933,6 +1023,18 @@ const TILE_PAINTERS = [
       for (let col = 0; col < 3; col++) actx.fillRect(ox + ((off + col * 8) % 16), oy + row * 4, 1, 4);
     }
   },
+  /* 23 door */ (ox, oy, rng) => {
+    for (let x = 0; x < T; x++) {                            // tablones verticales
+      const f = 0.78 + (x % 4 === 0 ? -0.2 : 0) + rng() * 0.12;
+      for (let y = 0; y < T; y++) { const g = f * (1 + (rng() - 0.5) * 0.08); px(ox, oy, x, y, 112 * g, 78 * g, 42 * g); }
+    }
+    actx.fillStyle = css(66, 44, 22);                        // refuerzos horizontales
+    actx.fillRect(ox, oy + 2, T, 2); actx.fillRect(ox, oy + 12, T, 2);
+    actx.fillStyle = css(40, 40, 46);                        // herrajes
+    actx.fillRect(ox + 1, oy + 2, 2, 2); actx.fillRect(ox + 13, oy + 2, 2, 2);
+    actx.fillRect(ox + 1, oy + 12, 2, 2); actx.fillRect(ox + 13, oy + 12, 2, 2);
+    actx.fillRect(ox + 11, oy + 7, 3, 2);                    // tirador
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -959,6 +1061,10 @@ const TILE_MAP = {
   [B.CHEST]:   { top: 20, bottom: 20, side: 19 },
   [B.FIRE]:    { all: 21 },
   [B.WSTONE]:  { all: 22 },
+  [B.DOORX]:   { all: 23 },
+  [B.DOORXO]:  { all: 23 },
+  [B.DOORZ]:   { all: 23 },
+  [B.DOORZO]:  { all: 23 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1031,6 +1137,14 @@ const FACES = [
 ];
 const UV_E = 0.02;
 
+// las puertas son paneles finos, no cubos: [x0,x1, y0,y1, z0,z1]
+const DOOR_BOX = {
+  [B.DOORX]:  [0.40, 0.60, 0, 1, 0, 1],     // cerrada: corta el paso en x
+  [B.DOORXO]: [0, 1, 0, 1, 0.00, 0.18],     // abierta: pegada al lado
+  [B.DOORZ]:  [0, 1, 0, 1, 0.40, 0.60],     // cerrada: corta el paso en z
+  [B.DOORZO]: [0.00, 0.18, 0, 1, 0, 1],     // abierta: pegada al lado
+};
+
 function faceVisible(self, nb) {
   if (nb === -1) return false;
   return isTransparent(nb) && nb !== self;
@@ -1061,6 +1175,27 @@ function buildChunkMesh(ch) {
   for (let ly = 0; ly < WH; ly++) for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
     const id = data[IDX(lx, ly, lz)];
     if (!id) continue;
+    const db = DOOR_BOX[id];
+    if (db) {   // panel de puerta: las 6 caras de una caja fina, sin ocultación
+      const tile = tileFor(id, 0);
+      const tx = tile % ACOLS, ty = (tile / ACOLS) | 0;
+      for (let f = 0; f < 6; f++) {
+        const face = FACES[f];
+        const base = buckets.solid.pos.length / 3;
+        for (const c of face.corners) {
+          buckets.solid.pos.push(
+            lx + db[0] + (db[1] - db[0]) * c[0],
+            ly + db[2] + (db[3] - db[2]) * c[1],
+            lz + db[4] + (db[5] - db[4]) * c[2]);
+          buckets.solid.nor.push(face.dir[0], face.dir[1], face.dir[2]);
+          buckets.solid.uv.push(
+            (tx + UV_E + c[3] * (1 - 2 * UV_E)) / ACOLS,
+            ((AROWS - 1 - ty) + UV_E + c[4] * (1 - 2 * UV_E)) / AROWS);
+        }
+        buckets.solid.idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+      }
+      continue;
+    }
     const bucket = id === B.WATER ? buckets.water : (id === B.LAVA || id === B.FIRE) ? buckets.glow : buckets.solid;
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
@@ -1248,7 +1383,7 @@ function raycast(maxDist, opts = {}) {
   let face = [0, 0, 0], t = 0;
   while (t <= maxDist) {
     const id = worldGetBlock(x, y, z);
-    if (id !== -1 && (isSolid(id) ||
+    if (id !== -1 && (isSolid(id) || id === B.DOORXO || id === B.DOORZO ||
         (opts.fire !== false && id === B.FIRE) ||
         (opts.fluids && isFluid(id)))) return { x, y, z, id, face };
     if (tmX < tmY && tmX < tmZ) { x += stepX; t = tmX; tmX += tdX; face = [-stepX, 0, 0]; }
@@ -1273,7 +1408,7 @@ const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
 function hitsFor(id, tool) {
   let base, match;
   if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW) { base = 2; match = 'shovel'; }
-  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST) { base = 4; match = 'axe'; }
+  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST || isDoorId(id)) { base = 4; match = 'axe'; }
   else if (id === B.LEAVES || id === B.MLEAVES) { return 1; }
   else if (id === B.MITHRIL) { base = 9; match = 'pick'; }
   else { base = 6; match = 'pick'; }   // piedra y similares
@@ -1396,9 +1531,29 @@ function swing(now) {
   else showDigbar(digState.hits / digState.need);
 }
 
+// abre o cierra una puerta y todas las hojas conectadas (portones de varias piezas)
+function toggleDoor(x, y, z) {
+  const flip = id => id === B.DOORX ? B.DOORXO : id === B.DOORXO ? B.DOORX
+                   : id === B.DOORZ ? B.DOORZO : B.DOORZ;
+  const seen = new Set(), stack = [[x, y, z]];
+  let n = 0;
+  while (stack.length && n < 40) {
+    const [cx, cy, cz] = stack.pop();
+    const k = cx + ',' + cy + ',' + cz;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const id = worldGetBlock(cx, cy, cz);
+    if (!isDoorId(id)) continue;
+    n++;
+    playerSetBlock(cx, cy, cz, flip(id));
+    for (const d of DIRS6) stack.push([cx + d[0], cy + d[1], cz + d[2]]);
+  }
+}
+
 function tryPlace(initial) {
   const hit = raycast(6, { fire: false });
   if (!hit) return;
+  if (isDoorId(hit.id)) { if (initial) toggleDoor(hit.x, hit.y, hit.z); return; }
   if (hit.id === B.CHEST) { if (initial) openChest(hit.x + ',' + hit.y + ',' + hit.z); return; }
   if (sel < TOOLS.length) {
     if (initial) toast('Con la ' + TOOLS[sel].name.toLowerCase() + ' no se construye — elige un material (huecos 6–9)');
@@ -1414,7 +1569,12 @@ function tryPlace(initial) {
   if (isSolid(mat) && intersectsPlayer(px, py, pz)) return;
   removeInv(mat, 1);
   if (mat === B.CHEST) { chests.set(px + ',' + py + ',' + pz, {}); broadcastChest(px + ',' + py + ',' + pz, {}); }
-  playerSetBlock(px, py, pz, mat);
+  let placed = mat;
+  if (mat === B.DOORX) {                      // orientar la puerta según hacia dónde miras
+    camera.getWorldDirection(_dir);
+    placed = Math.abs(_dir.x) > Math.abs(_dir.z) ? B.DOORX : B.DOORZ;
+  }
+  playerSetBlock(px, py, pz, placed);
 }
 
 /* ============================================================
@@ -2010,6 +2170,8 @@ function renderInv() {
       go: () => { if (inv[B.LOG] > 0) removeInv(B.LOG, 1); else removeInv(B.MLOG, 1); addInv(B.PLANK, 4); toast('+4 Tablones'); } },
     { label: '8 tablones → 1 cofre', can: inv[B.PLANK] >= 8,
       go: () => { removeInv(B.PLANK, 8); addInv(B.CHEST, 1); toast('+1 Cofre  (colócalo y clic derecho para abrirlo)'); } },
+    { label: '4 tablones → 1 puerta de madera', can: inv[B.PLANK] >= 4,
+      go: () => { removeInv(B.PLANK, 4); addInv(B.DOORX, 1); toast('+1 Puerta  (clic derecho para abrirla y cerrarla)'); } },
   ];
   for (const r of recipes) {
     const row = document.createElement('div');
@@ -2077,9 +2239,11 @@ const MARKERS = [
   { x: 8,   z: 8,    n: 'La Comarca' },
   { x: 148, z: -30,  n: 'Moria' },
   { x: 170, z: -120, n: 'Montañas Nubladas' },
+  { x: 215, z: 30,   n: 'Lothlórien' },
   { x: 105, z: 140,  n: 'Isengard' },
   { x: 30,  z: 192,  n: 'Abismo de Helm' },
   { x: 230, z: 230,  n: 'Minas Tirith' },
+  { x: 261, z: 233,  n: 'Osgiliath' },
   { x: 330, z: 290,  n: 'Barad-dûr' },
 ];
 function ensureMapCache() {
@@ -2299,6 +2463,12 @@ function updateSky(dt, time) {
 let prevT = performance.now();
 function loop(now) {
   requestAnimationFrame(loop);
+  step(now);
+}
+// con la pestaña oculta, rAF se pausa: este tic mantiene vivos el mundo, la red y el fuego
+setInterval(() => { if (document.hidden) step(performance.now()); }, 100);
+
+function step(now) {
   const dt = Math.min(0.05, (now - prevT) / 1000);
   prevT = now;
   const time = now / 1000;
@@ -2320,7 +2490,7 @@ function loop(now) {
   camera.rotation.set(pitch, yaw, 0);
 
   updateSky(dt, time);
-  renderer.render(scene, camera);
+  if (!document.hidden) renderer.render(scene, camera);
 }
 requestAnimationFrame(loop);
 
@@ -2342,7 +2512,7 @@ window.G = {
   saveNow: saveWorld, exitWorld, hostGame, joinGame,
   inv: () => ({ ...inv }), give(id, n) { addInv(id, n ?? 1); },
   breakAt(x, y, z) { completeBreak({ x, y, z, id: worldGetBlock(x, y, z) }); },
-  openChest, renderInv, showScreen, selectSlot, tryPlace, swing, drops,
+  openChest, renderInv, showScreen, selectSlot, tryPlace, swing, drops, toggleDoor,
   reacts: () => reactQueue.length,
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
 };

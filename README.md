@@ -51,12 +51,15 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 
 Pulsa **M** para ver el mapa con tu posición. Los lugares famosos están construidos en el mundo, dispuestos como en el mapa real (el este queda a +x y el sur a +z):
 
-- **La Comarca** — el punto de aparición, con su agujero hobbit (y un cofre con regalo).
-- **Moria** — las Puertas de Durin en la cara oeste de las **Montañas Nubladas** (una cordillera norte–sur de cumbres nevadas); dentro, la sala de pilares de Khazad-dûm y una grieta de lava.
-- **Isengard** — el anillo de roca con fosas ardientes y la torre negra de **Orthanc**.
-- **El Abismo de Helm** — el Muro del Bajo con almenas (y su alcantarilla), Cuernavilla y la montaña a su espalda.
-- **Minas Tirith** — la ciudad blanca de siete niveles con la Torre de Ecthelion, sobre los campos del Pelennor.
+- **La Comarca** — el punto de aparición, con su agujero hobbit con puerta de madera (y un cofre con regalo).
+- **Moria** — las Puertas de Durin con su arco de ithildin (mithril) y los dos acebos, en la cara oeste de las **Montañas Nubladas**; dentro, la sala de pilares de Khazad-dûm y una grieta de lava.
+- **Lothlórien** — el Bosque Dorado, al este de Moria, como debe ser.
+- **Isengard** — anillo de roca con casa-puerta de torres gemelas, portón de madera, fosas ardientes y la torre negra de **Orthanc** con sus cuatro cuernos.
+- **El Abismo de Helm** — el Muro del Bajo curvado con adarve, almenas y su alcantarilla; el espolón de roca con la Cuernavilla, la torre del Gran Cuerno y la calzada que sube a su portón.
+- **Minas Tirith** — la ciudad blanca de siete niveles con el espolón de proa, la Gran Puerta de madera y la Torre de Ecthelion, sobre los campos del Pelennor.
+- **El río Anduin** — serpentea de norte a sur, con el puente de **Osgiliath** frente a Minas Tirith.
 - **Mordor** — al sureste: roca negra, lagos de lava, niebla rojiza y **Barad-dûr** con el Ojo ardiente.
+- **Puertas de madera** en todas las fortalezas: clic derecho para abrirlas y cerrarlas (los portones de varias hojas se abren enteros). Se fabrican con 4 tablones. Y sí: arden.
 - Al romper un bloque, el material **cae al suelo** junto al agujero: acércate y lo recoges solo.
 - Bajo tierra hay **mithril** si excavas. Ciclo completo de día y noche (5 minutos).
 
