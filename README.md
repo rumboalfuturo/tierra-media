@@ -81,6 +81,17 @@ Al **caer la noche** aparecen enemigos (de día solo en Mordor, que siempre es h
 
 El **hierro negro** que sueltan los enemigos es justo lo que necesitas para forjar la armadura más recia: derrota orcos → forja equipo pesado. En multijugador los enemigos los lleva el anfitrión y os pueden atacar a los dos.
 
+## 🐴 Fauna y monturas
+
+De día aparecen **animales** salvajes según la zona:
+- **Caballo de Rohan** (llanuras): la montura más veloz, ideal para viajar lejos.
+- **Poni de la Comarca** (colinas): lleva **alforjas** — pulsa **E** montado para guardar materiales en su bolsa.
+- **Cabra de Erebor** (montañas): **trepa** laderas escarpadas saltando bloques y **no recibe daño por caídas**.
+
+**Cómo montar**: acércate a un animal y haz **clic derecho** dándole **grano de cebada** (4 veces lo doma) o una **manzana de oro** (lo doma al instante). Una vez domado, clic derecho para **montarlo**. Pulsa **F** para desmontar.
+
+La **manzana de oro** se forja con 8 pepitas de oro (¡por fin un uso para el oro!) y también puedes comerla para curarte mucho. Tu montura actual aparece abajo a la izquierda (🐴).
+
 ## El mapa de la Tierra Media
 
 Pulsa **M** para ver el mapa con tu posición. Los lugares famosos están construidos en el mundo, dispuestos como en el mapa real (el este queda a +x y el sur a +z):

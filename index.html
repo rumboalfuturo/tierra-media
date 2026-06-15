@@ -348,7 +348,7 @@ const I = {
   ATHELAS_LEAF:204, MALLORN_NUT:205, PIPE:206, ALE:207,
   IRON_INGOT:208, GOLD_INGOT:209, GOLD_NUGGET:210, SILVER_INGOT:211,
   BIRON_INGOT:212, STEEL_INGOT:213, MITHRIL_INGOT:214,
-  WOLF_PELT:215, SPIDER_SILK:216, URUK_BANNER:217, MORGUL_BLADE:218,
+  WOLF_PELT:215, SPIDER_SILK:216, URUK_BANNER:217, MORGUL_BLADE:218, GOLDEN_APPLE:219,
 };
 const isItem = id => id >= 200;
 // objetos que se pueden sembrar (item → bloque de cultivo y dónde)
@@ -381,6 +381,7 @@ const NAMES = {
   [I.STEEL_INGOT]:'Acero de Gondor', [I.MITHRIL_INGOT]:'Lingote de mithril',
   [I.WOLF_PELT]:'Piel de huargo', [I.SPIDER_SILK]:'Telaraña élfica',
   [I.URUK_BANNER]:'Estandarte de la Mano Blanca', [I.MORGUL_BLADE]:'Hoja de Morgul',
+  [I.GOLDEN_APPLE]:'Manzana de oro',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -590,6 +591,7 @@ function removeInv(id, n = 1) {
   saveDirty = true; refreshHotbar();
 }
 function broadcastChest(k, c) {
+  if (k && k[0] === '@') return;          // alforjas de montura: locales, ni red ni guardado
   const msg = { t: 'chest', k, c };
   if (isHost) broadcast(msg);
   else if (isGuest && hostConn && hostConn.open) hostConn.send(msg);
@@ -1588,13 +1590,16 @@ function resetWorld() {
   reactQueue.length = 0;
   crops.clear(); barrelCool.clear();
   clearDrops(); clearParticles(); clearMobs();
+  if (mountMesh) { scene.remove(mountMesh); mountMesh = null; }
+  player.mount = null; chests.delete('@bag');
   for (const id of [...avatars.keys()]) removeAvatar(id);
 }
 
 /* ============================================================
    JUGADOR
 ============================================================ */
-const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: false };
+const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: false, mount: null };
+let mountMesh = null;
 let yaw = -2.36, pitch = -0.05;
 const PHALF = 0.3, PHEIGHT = 1.8, PEYE = 1.62;
 
@@ -1627,6 +1632,8 @@ function physics(dt) {
   if (strengthTimer > 0) speed *= 1.18;
   if (fearTimer > 0) speed *= 0.55;          // el grito del Nazgûl paraliza de miedo
   speed *= 1 - ARMOR[armorTier].slow;        // el hierro negro pesa; el mithril aligera
+  const mnt = player.mount && player.mount.def.mount;
+  if (mnt) speed *= mnt.speed;               // la montura corre más
 
   let f = 0, r = 0;
   if (keys.has('KeyW')) f++; if (keys.has('KeyS')) f--;
@@ -1644,7 +1651,12 @@ function physics(dt) {
     const want = keys.has('Space') ? 3.5 : -2.0;
     player.vy += (want - player.vy) * (1 - Math.exp(-4 * dt));
   } else {
-    if (keys.has('Space') && player.onGround) { player.vy = 8.2; }
+    if (keys.has('Space') && player.onGround) { player.vy = mnt ? mnt.jump : 8.2; }
+    // la cabra trepa: salto automático ante un escalón
+    if (mnt && mnt.climb && player.onGround && len > 0) {
+      const fx = player.x + dx * 0.5, fz = player.z + dz * 0.5;
+      if (isSolid(worldGetBlock(Math.floor(fx), Math.floor(player.y + 0.5), Math.floor(fz)))) player.vy = 6.5;
+    }
     player.vy -= 24 * dt;
     if (player.vy < -38) player.vy = -38;
   }
@@ -1663,7 +1675,7 @@ function physics(dt) {
   else {
     if (wasAir) {
       const fall = peakY - player.y;
-      if (fall > 3.5 && !inFluid) damage(Math.floor(fall - 3.5), 'fall');
+      if (fall > 3.5 && !inFluid && !(mnt && mnt.noFall)) damage(Math.floor(fall - 3.5), 'fall');
     }
     wasAir = false; peakY = player.y;
   }
@@ -1895,6 +1907,10 @@ function drinkBarrel(k) {
 }
 
 function tryPlace(initial) {
+  if (initial && !player.mount) {                 // interactuar con un animal que tengamos delante
+    const animal = entityInCrosshair(3.2, m => m.def.passive);
+    if (animal) { interactAnimal(animal); return; }
+  }
   const hit = raycast(6, { fire: false });
   if (!hit) return;
   if (isDoorId(hit.id)) { if (initial) toggleDoor(hit.x, hit.y, hit.z); return; }
@@ -2180,12 +2196,17 @@ const MOB = {
   uruk:   { name:'Uruk-hai',           hp:26, dmg:5, speed:3.4, aggro:17, reach:1.8, scale:1.25, body:0x23231f, head:0x33332c },
   spider: { name:'Araña de Mirkwood',  hp:12, dmg:2, speed:4.8, aggro:13, reach:1.6, scale:1.00, body:0x241826, head:0x241826, shape:'spider', poison:true },
   nazgul: { name:'Nazgûl',             hp:46, dmg:6, speed:3.4, aggro:24, reach:1.9, scale:1.35, body:0x0b0b14, head:0x0b0b14, shape:'wraith', fear:true, boss:true },
+  // ---- fauna (pasiva, domable, montable) ----
+  horse:  { name:'Caballo de Rohan',   hp:30, passive:true, speed:3.0, scale:1.30, body:0x6f4f30, head:0x5e4228, shape:'quad', mount:{ speed:1.95, jump:8.6 } },
+  pony:   { name:'Poni de la Comarca',  hp:20, passive:true, speed:2.6, scale:0.85, body:0x8a6a44, head:0x7a5a38, shape:'quad', mount:{ speed:1.5, jump:8.2, storage:true } },
+  goat:   { name:'Cabra de Erebor',    hp:18, passive:true, speed:2.8, scale:0.90, body:0xd2caba, head:0xe2dacc, shape:'quad', horns:true, mount:{ speed:1.3, jump:11, climb:true, noFall:true } },
 };
 const MOB_DROP = {
   orc:    () => { const o = [[B.BIRONORE, 1 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.5) o.push([I.WOLF_PELT, 1]); return o; },
   uruk:   () => { const o = [[B.BIRONORE, 2 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.6) o.push([I.URUK_BANNER, 1]); return o; },
   spider: () => [[I.SPIDER_SILK, 1 + (Math.random() < 0.5 ? 1 : 0)]],
   nazgul: () => [[I.MORGUL_BLADE, 1], [I.GOLD_INGOT, 2]],
+  horse:  () => [], pony: () => [], goat: () => [[I.WOLF_PELT, 1]],
 };
 
 const sunY = () => Math.sin(dayT * Math.PI * 2);
@@ -2198,6 +2219,22 @@ function createMobMesh(type) {
   const hm = new THREE.MeshLambertMaterial({ color: def.head });
   const mats = [bm, hm];
   const limbs = {};
+  if (def.shape === 'quad') {                          // cuadrúpedo: caballo, poni, cabra
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5 * sc, 0.55 * sc, 1.1 * sc), bm); body.position.y = 0.85 * sc;
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.28 * sc, 0.5 * sc, 0.3 * sc), bm); neck.position.set(0, 1.1 * sc, -0.55 * sc); neck.rotation.x = -0.4;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3 * sc, 0.32 * sc, 0.5 * sc), hm); head.position.set(0, 1.32 * sc, -0.78 * sc);
+    g.add(body, neck, head);
+    const legGeo = new THREE.BoxGeometry(0.13 * sc, 0.62 * sc, 0.13 * sc);
+    const legs = [];
+    for (const [lx, lz] of [[0.18, -0.4], [-0.18, -0.4], [0.18, 0.4], [-0.18, 0.4]]) {
+      const leg = new THREE.Mesh(legGeo, bm); leg.position.set(lx * sc, 0.31 * sc, lz * sc); g.add(leg); legs.push(leg);
+    }
+    limbs.legL = legs[0]; limbs.legR = legs[1]; limbs.legL2 = legs[2]; limbs.legR2 = legs[3];
+    if (def.horns) { const hornGeo = new THREE.BoxGeometry(0.07 * sc, 0.28 * sc, 0.07 * sc);
+      const hm2 = new THREE.MeshLambertMaterial({ color: 0x4a3a28 }); mats.push(hm2);
+      for (const s of [-1, 1]) { const horn = new THREE.Mesh(hornGeo, hm2); horn.position.set(s * 0.08 * sc, 1.5 * sc, -0.78 * sc); horn.rotation.x = 0.5; g.add(horn); } }
+    return { group: g, mats, limbs };
+  }
   if (def.shape === 'spider') {
     const ab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.85), bm); ab.position.set(0, 0.45, 0.3);
     const ce = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.46), hm); ce.position.set(0, 0.42, -0.32);
@@ -2289,6 +2326,7 @@ function mobAttack(m, np) {
 // daño a un mob (byId: 'self' jugador local, o peerId de un invitado, o null = entorno)
 function hitMobBy(m, dmg, byId, fromX, fromZ) {
   m.hp -= dmg; m.hurtT = 0.22;
+  if (m.def.passive) m.flee = 5;
   const ax = m.x - (fromX ?? player.x), az = m.z - (fromZ ?? player.z), d = Math.hypot(ax, az) || 1;
   m.vx += ax / d * 5; m.vz += az / d * 5; m.vy = Math.max(m.vy, 3);
   if (m.hp <= 0) killMob(m, byId || 'self');
@@ -2309,17 +2347,7 @@ function killMob(m, killerId) {
 }
 
 // el jugador local golpea con clic izquierdo a un mob que tenga en el punto de mira
-function mobInCrosshair() {
-  camera.getWorldDirection(_dir);
-  let best = null, bestDot = 0.55;
-  for (const m of mobs.values()) {
-    const cx = m.x - camera.position.x, cy = (m.y + 0.8) - camera.position.y, cz = m.z - camera.position.z;
-    const dist = Math.hypot(cx, cy, cz); if (dist > 3.6) continue;
-    const dot = (cx * _dir.x + cy * _dir.y + cz * _dir.z) / dist;
-    if (dot > bestDot) { bestDot = dot; best = m; }
-  }
-  return best;
-}
+function mobInCrosshair() { return entityInCrosshair(3.6, m => !m.def.passive); }   // golpear solo a los hostiles
 function playerHitMob(m) {
   if (nowMs() - lastMelee < 380) return true;
   lastMelee = nowMs();
@@ -2345,6 +2373,7 @@ function updateMobs(dt, now) {
   for (const m of mobs.values()) {
     if (mobsFrozen) { const dx = player.x - m.x, dz = player.z - m.z;
       m.group.position.set(m.x, m.y, m.z); m.group.rotation.y = Math.atan2(-dx, -dz); flashMob(m, dt); continue; }
+    if (m.def.passive) { updatePassive(m, dt); continue; }
     const def = m.def;
     const np = nearestPlayer(m.x, m.z);
     const dx = np.x - m.x, dz = np.z - m.z, dist = Math.hypot(dx, dz);
@@ -2425,14 +2454,120 @@ function applyMobSnapshot(list) {
     if (!m) m = spawnMob(e.ty, e.x, e.y, e.z, e.id);
     if (!m) continue;
     if (e.hp < m.hp) m.hurtT = 0.22;
-    m.tx = e.x; m.ty = e.y; m.tz = e.z; m.tyaw = e.yaw; m.hp = e.hp; m.mh = e.mh;
+    m.tx = e.x; m.ty = e.y; m.tz = e.z; m.tyaw = e.yaw; m.hp = e.hp; m.mh = e.mh; m.tame = !!e.tm;
   }
   for (const id of [...mobs.keys()]) if (!seen.has(id)) removeMob(id);
 }
 function mobSnapshot() {
   const list = [];
-  for (const m of mobs.values()) list.push({ id: m.id, ty: m.type, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), yaw: +m.yaw.toFixed(2), hp: m.hp, mh: m.mh });
+  for (const m of mobs.values()) list.push({ id: m.id, ty: m.type, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), yaw: +m.yaw.toFixed(2), hp: m.hp, mh: m.mh, tm: m.tame ? 1 : 0 });
   return list;
+}
+
+/* ----- fauna pasiva: deambular, huir, domar y montar ----- */
+let lastAnimalSpawn = 0;
+function updatePassive(m, dt) {
+  const def = m.def;
+  let mvx = 0, mvz = 0, moving = false;
+  if (m.flee > 0) {
+    m.flee -= dt;
+    const dx = m.x - player.x, dz = m.z - player.z, d = Math.hypot(dx, dz) || 1;
+    mvx = dx / d; mvz = dz / d; moving = true;
+  } else {
+    m.wander -= dt;
+    if (m.wander <= 0) { m.wander = 3 + Math.random() * 4; m.wyaw = Math.random() * 6.283; m.moveT = Math.random() < 0.6; }
+    if (m.moveT) { mvx = -Math.sin(m.wyaw) * 0.35; mvz = -Math.cos(m.wyaw) * 0.35; moving = true; }
+  }
+  if (moving) m.yaw = Math.atan2(-mvx, -mvz);
+  const sp = def.speed * (m.flee > 0 ? 1.6 : 1);
+  const k = 1 - Math.exp(-8 * dt);
+  m.vx += (mvx * sp - m.vx) * k; m.vz += (mvz * sp - m.vz) * k;
+  if (m.onGround && moving && Math.abs(m.vx) < 0.05 && Math.abs(m.vz) < 0.05) m.vy = 6;
+  m.vy -= 22 * dt; if (m.vy < -40) m.vy = -40;
+  mobMove(m, dt);
+  if (blockAtF(m.x, m.y + 0.1, m.z) === B.LAVA || m.y < -8) { m.hp = 0; }
+  if (m.hp <= 0) { killMob(m, null); return; }
+  const d2 = (player.x - m.x) ** 2 + (player.z - m.z) ** 2;
+  if (d2 > (m.tame ? 110 : 64) ** 2) { removeMob(m.id); return; }
+  m.anim += dt * (moving ? 8 : 1.5);
+  const bob = Math.sin(m.anim) * (moving ? 0.05 : 0.015);
+  m.group.position.set(m.x, m.y + bob, m.z); m.group.rotation.y = m.yaw;
+  if (m.limbs.legL) { const sw = Math.sin(m.anim) * (moving ? 0.5 : 0.03);
+    m.limbs.legL.rotation.x = sw; m.limbs.legR.rotation.x = -sw;
+    if (m.limbs.legL2) { m.limbs.legL2.rotation.x = -sw; m.limbs.legR2.rotation.x = sw; } }
+  flashMob(m, dt);
+}
+
+function entityInCrosshair(maxDist, filter) {
+  camera.getWorldDirection(_dir);
+  let best = null, bestDot = 0.5;
+  for (const m of mobs.values()) {
+    if (filter && !filter(m)) continue;
+    const cx = m.x - camera.position.x, cy = (m.y + 0.7) - camera.position.y, cz = m.z - camera.position.z;
+    const dist = Math.hypot(cx, cy, cz); if (dist > maxDist) continue;
+    const dot = (cx * _dir.x + cy * _dir.y + cz * _dir.z) / dist;
+    if (dot > bestDot) { bestDot = dot; best = m; }
+  }
+  return best;
+}
+
+function interactAnimal(m) {
+  if (m.tame) { mountAnimal(m); return; }
+  if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); doTame(m, true); }
+  else if (inv[I.BARLEY_GRAIN] > 0) { removeInv(I.BARLEY_GRAIN, 1); doTame(m, false); }
+  else { toast('Necesitas grano de cebada (o una manzana de oro) para domarlo'); return; }
+  spawnPuffs(m.x, m.y + 1.0, m.z, '#ff8ab0', 5);
+}
+function doTame(m, instant) {
+  if (isGuest && hostConn && hostConn.open) hostConn.send({ t: 'tame', id: m.id, instant });
+  if (instant) { m.tame = true; toast('¡' + m.def.name + ' domado! Clic derecho para montarlo'); }
+  else { m.feed = (m.feed || 0) + 1; if (m.feed >= 4) { m.tame = true; toast('¡' + m.def.name + ' domado! Clic derecho para montarlo'); } else toast('Le das de comer… ' + m.feed + '/4'); }
+}
+function mountAnimal(m) {
+  if (player.mount) return;
+  player.mount = { type: m.type, def: m.def, storage: m.storage || {} };
+  if (isGuest && hostConn && hostConn.open) hostConn.send({ t: 'mount', id: m.id });
+  removeMob(m.id);
+  if (mountMesh) scene.remove(mountMesh);
+  mountMesh = createMobMesh(player.mount.type).group; scene.add(mountMesh);
+  updateGearHUD();
+  toast('Montas un ' + m.def.name + ' · F para desmontar' + (m.def.mount.storage ? ' · E para las alforjas' : ''));
+}
+function dismount() {
+  if (!player.mount) return;
+  const t = player.mount.type, st = player.mount.storage;
+  if (mountMesh) { scene.remove(mountMesh); mountMesh = null; }
+  chests.delete('@bag');
+  if (isGuest) { if (hostConn && hostConn.open) hostConn.send({ t: 'dismount', mt: t, x: player.x, y: player.y, z: player.z, st }); }
+  else { const a = spawnMob(t, player.x + 0.7, player.y + 0.1, player.z); if (a) { a.tame = true; a.storage = st; } }
+  player.mount = null; updateGearHUD();
+  toast('Desmontas');
+}
+function openMountBag() {
+  if (!player.mount || !player.mount.def.mount.storage) return;
+  chests.set('@bag', player.mount.storage);
+  openChest('@bag');
+}
+
+function trySpawnAnimal(now) {
+  if (isGuest || !inWorld || godmode || mobsFrozen) return;
+  if (now - lastAnimalSpawn < 2500) return;
+  lastAnimalSpawn = now;
+  let count = 0; for (const m of mobs.values()) if (m.def.passive) count++;
+  if (count >= 6) return;
+  const ang = Math.random() * 6.283, r = 22 + Math.random() * 16;
+  const sx = Math.round(player.x + Math.cos(ang) * r), sz = Math.round(player.z + Math.sin(ang) * r);
+  let gy = -1;
+  for (let y = WH - 3; y > 2; y--) {
+    if (isSolid(worldGetBlock(sx, y, sz)) && worldGetBlock(sx, y + 1, sz) === B.AIR && worldGetBlock(sx, y + 2, sz) === B.AIR) { gy = y + 1; break; }
+  }
+  if (gy < 0) return;
+  const biome = biomeAt(sx, sz);
+  let type = null;
+  if (biome === BIOME.MOUNTAIN || gy - 1 >= 27) type = 'goat';
+  else if (biome === BIOME.SHIRE) type = Math.random() < 0.5 ? 'horse' : 'pony';
+  else return;
+  spawnMob(type, sx + 0.5, gy, sz + 0.5);
 }
 
 /* ============================================================
@@ -2499,7 +2634,7 @@ function onHostData(conn, m) {
       t: 'welcome', seed: SEED, dayT,
       name: worldDisplayName,
       edits: flattenEdits(),
-      chests: Object.fromEntries(chests),
+      chests: Object.fromEntries([...chests].filter(([k]) => k[0] !== '@')),
       players: [
         { id: 'H', name: profile.name, color: profile.color, x: player.x, y: player.y, z: player.z },
         ...[...conns.entries()].filter(([id]) => id !== conn.peer)
@@ -2523,6 +2658,13 @@ function onHostData(conn, m) {
   } else if (m.t === 'mobhit') {
     const mob = mobs.get(m.id);
     if (mob) { const a = avatars.get(conn.peer); hitMobBy(mob, m.dmg || 1, conn.peer, a ? a.t.x : mob.x, a ? a.t.z : mob.z); }
+  } else if (m.t === 'tame') {
+    const a = mobs.get(m.id);
+    if (a && a.def.passive) { if (m.instant) a.tame = true; else { a.feed = (a.feed || 0) + 1; if (a.feed >= 4) a.tame = true; } }
+  } else if (m.t === 'mount') {
+    removeMob(m.id);
+  } else if (m.t === 'dismount') {
+    if (MOB[m.mt] && MOB[m.mt].passive) { const a = spawnMob(m.mt, (m.x || player.x) + 0.6, (m.y || player.y) + 0.1, m.z || player.z); if (a) { a.tame = true; a.storage = m.st || {}; } }
   }
 }
 
@@ -2649,7 +2791,7 @@ function saveWorld() {
     player: { x: player.x, y: player.y, z: player.z, yaw, pitch },
     edits,
     inv, hotbarMats,
-    chests: Object.fromEntries(chests),
+    chests: Object.fromEntries([...chests].filter(([k]) => k[0] !== '@')),
     crops: cropList,
     gear: { tool: toolTier, armor: armorTier, weapon: weaponTier },
   });
@@ -2956,6 +3098,11 @@ function drawItemIcon(g, id) {
     g.strokeStyle = '#9fdfe0'; g.lineWidth = 3; g.beginPath(); g.moveTo(8, 25); g.lineTo(22, 7); g.stroke();   // hoja pálida
     g.strokeStyle = '#3a2a4a'; g.lineWidth = 3; g.beginPath(); g.moveTo(6, 27); g.lineTo(11, 22); g.stroke();  // empuñadura
     g.fillStyle = 'rgba(160,220,230,.5)'; g.beginPath(); g.arc(22, 7, 3, 0, 7); g.fill();
+  } else if (id === I.GOLDEN_APPLE) {
+    g.fillStyle = '#f0cf52'; g.beginPath(); g.arc(15, 18, 8, 0, 7); g.fill();
+    g.fillStyle = '#fff3b0'; g.beginPath(); g.arc(12, 15, 3, 0, 7); g.fill();              // brillo
+    g.strokeStyle = '#6a4e20'; g.lineWidth = 2; g.beginPath(); g.moveTo(15, 10); g.lineTo(17, 6); g.stroke();  // rabito
+    g.fillStyle = '#5a8a3a'; g.beginPath(); g.ellipse(19, 7, 3, 1.6, 0.6, 0, 7); g.fill(); // hoja
   }
 }
 function drawMatIcon(g, id) {
@@ -3062,6 +3209,7 @@ function renderInv() {
     { id: I.PIPE,         use: () => smokePipe(), label: 'Fumar' },
     { id: I.ALE,          use: () => drinkAle() },
     { id: I.MORGUL_BLADE, use: () => { if (inv[I.MORGUL_BLADE] > 0) { removeInv(I.MORGUL_BLADE, 1); setWeapon('morgul'); } }, label: 'Empuñar' },
+    { id: I.GOLDEN_APPLE, use: () => { if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); heal(10); regenBuffTimer = 20; toast('La manzana de oro te restaura'); } }, label: 'Comer' },
   ];
   const useable = new Map(consumables.map(c => [c.id, c]));
   let anyObj = false;
@@ -3164,7 +3312,8 @@ function gearText() { return '⚒ herramientas: ' + NAME_TIER[toolTier.pick] + '
 function updateGearHUD() {
   const g = (toolTier.pick !== 'base' ? '⚒' + NAME_TIER[toolTier.pick] + ' ' : '')
           + (armorTier !== 'none' ? '🛡' + NAME_TIER[armorTier] + ' ' : '')
-          + (weaponTier !== 'none' ? '⚔' + NAME_TIER[weaponTier] : '');
+          + (weaponTier !== 'none' ? '⚔' + NAME_TIER[weaponTier] + ' ' : '')
+          + (player.mount ? '🐴' + player.mount.def.name : '');
   $('gearinfo').textContent = g;
 }
 function setTools(t)  { toolTier.pick = toolTier.shovel = toolTier.axe = t; saveDirty = true; toast('Forjas herramientas de ' + NAME_TIER[t]); updateGearHUD(); }
@@ -3191,6 +3340,7 @@ function renderForge() {
     { label: '2 lingotes de hierro → acero de Gondor', need: [[I.IRON_INGOT, 2]], out: () => addInv(I.STEEL_INGOT, 1) },
     { label: '1 lingote de oro → 9 pepitas',       need: [[I.GOLD_INGOT, 1]], out: () => addInv(I.GOLD_NUGGET, 9) },
     { label: '1 lingote de oro → bloque de oro',   need: [[I.GOLD_INGOT, 1]], out: () => addInv(B.GOLDBLOCK, 1) },
+    { label: '8 pepitas de oro → manzana de oro',  need: [[I.GOLD_NUGGET, 8]], out: () => addInv(I.GOLDEN_APPLE, 1) },
   ].forEach(r => addRecipe(sb, r));
 
   const fb = $('forgebox'); fb.innerHTML = '';
@@ -3367,11 +3517,15 @@ document.addEventListener('keydown', e => {
   keys.add(e.code);
   if (e.code === 'KeyR' && locked) respawn();
   if (e.code === 'KeyE' && inWorld) {
-    if (locked) { invOpen = true; document.exitPointerLock(); }
+    if (locked) {
+      if (player.mount && player.mount.def.mount.storage) openMountBag();   // alforjas del poni
+      else { invOpen = true; document.exitPointerLock(); }
+    }
     else if (invOpen) { invOpen = false; canvas.requestPointerLock(); }
     else if (openChestKey) { openChestKey = null; canvas.requestPointerLock(); }
     else if (forgeOpen) { forgeOpen = false; canvas.requestPointerLock(); }
   }
+  if (e.code === 'KeyF' && locked && player.mount) dismount();
   if (e.code === 'KeyM' && inWorld) {
     if (locked) { mapOpen = true; document.exitPointerLock(); }
     else if (mapOpen) { mapOpen = false; canvas.requestPointerLock(); }
@@ -3464,15 +3618,16 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) { processReacts(now); growCrops(now); trySpawn(now); }
+    if (!isGuest) { processReacts(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); }
     updateMobs(dt, now);
+    if (player.mount && mountMesh) { mountMesh.position.set(player.x, player.y, player.z); mountMesh.rotation.y = yaw; }
     updateDrops(dt, now);
     updateParticles(dt);
     updateAvatars(dt);
     updateHUD(now);
     renderMinimap();
   }
-  camera.position.set(player.x, player.y + PEYE, player.z);
+  camera.position.set(player.x, player.y + PEYE + (player.mount ? 0.45 : 0), player.z);
   camera.rotation.set(pitch, yaw, 0);
 
   updateSky(dt, time);
@@ -3514,6 +3669,11 @@ window.G = {
   mobList: () => [...mobs.values()].map(m => ({ id: m.id, type: m.type, hp: m.hp, x: +m.x.toFixed(1), y: +m.y.toFixed(1), z: +m.z.toFixed(1) })),
   hitMob: id => { const m = mobs.get(id); if (m) playerHitMob(m); },
   mobInView: () => { const m = mobInCrosshair(); return m ? m.id : null; },
+  // fauna y monturas (para pruebas)
+  tame: id => { const m = mobs.get(id); if (m) m.tame = true; },
+  mount: id => { const m = mobs.get(id); if (m) mountAnimal(m); },
+  dismount, mounted: () => player.mount ? player.mount.type : null,
+  animals: () => [...mobs.values()].filter(m => m.def.passive).map(m => ({ id: m.id, type: m.type, tame: !!m.tame })),
   forceRender() { camera.position.set(player.x, player.y + PEYE, player.z); camera.rotation.set(pitch, yaw, 0); renderer.render(scene, camera); },
   god: v => godmode = v, freeze: v => mobsFrozen = v,
   findOre(id) { for (const ch of chunks.values()) for (let i = 0; i < ch.data.length; i++) if (ch.data[i] === id) { const lx = i % 16, lz = ((i / 16) | 0) % 16, ly = (i / 256) | 0; return { x: ch.cx * 16 + lx, y: ly, z: ch.cz * 16 + lz }; } return null; },
