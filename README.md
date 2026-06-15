@@ -39,7 +39,7 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 
 Pulsa **C** en cualquier momento para abrir el **chat de ayuda de Gandalf**: escribe tu pregunta («¿cómo mato una araña?», «¿cómo hago una armadura?», «¿cómo domo un caballo?»…) o toca una de las sugerencias, y te responde al instante. Funciona sin conexión (es una guía integrada).
 
-En el inventario (**E**), arriba del todo, tienes una sección de **Equipo** que muestra por separado tus **armas y armaduras** (se forjan en la forja y no ocupan los huecos del cinturón).
+El inventario (**E**) está organizado en **pestañas** — 🎒 Mochila, ⚔ Equipo y 🔨 Fabricar — para que elijas qué ver y el menú nunca se haga más grande que la pantalla. En la pestaña **Equipo** ves por separado tus **armas y armaduras** (se forjan en la forja y no ocupan los huecos del cinturón). Todos los menús se pueden desplazar si hace falta.
 
 ## Herramientas, inventario y cofres
 

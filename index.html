@@ -107,7 +107,16 @@
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
     background:rgba(8,6,10,.8); backdrop-filter:blur(4px); z-index:10;
   }
-  .screen { display:none; flex-direction:column; align-items:center; gap:16px; max-width:680px; width:92%; }
+  .screen { display:none; flex-direction:column; align-items:center; gap:16px; max-width:680px; width:92%; max-height:100vh; overflow-y:auto; padding:10px 0; box-sizing:border-box; }
+  /* ---------- pestañas del inventario ---------- */
+  .tabs { display:flex; gap:6px; width:100%; }
+  .tab {
+    flex:1; background:rgba(0,0,0,.35); border:1px solid rgba(190,160,90,.35); color:#cbb27c;
+    font-family:Georgia, serif; font-size:15px; padding:9px 6px; border-radius:6px; cursor:pointer; letter-spacing:.5px;
+  }
+  .tab.sel { background:rgba(190,160,90,.28); color:#f4ecd4; border-color:rgba(190,160,90,.7); }
+  .tab:hover { background:rgba(190,160,90,.2); }
+  .tabpane { display:flex; flex-direction:column; gap:12px; width:100%; }
   .screen h1 {
     color:#e8c860; font-size:50px; margin:0; letter-spacing:9px; font-weight:normal;
     text-shadow:0 0 24px rgba(232,200,96,.4), 0 3px 8px #000; text-align:center;
@@ -251,17 +260,33 @@
   <div class="screen" id="scr-inv">
     <h2>INVENTARIO</h2>
     <div class="panel" style="max-width:640px;">
-      <label class="flabel">⚔ Equipo — armas y armaduras (se forjan en la forja, no ocupan el cinturón)</label>
-      <div id="equipbox" style="width:100%; display:flex; flex-direction:column; gap:6px;"></div>
-      <label class="flabel">Huecos del cinturón (teclas 6–9) — elige un hueco y luego un material</label>
-      <div id="belt" class="invgrid"></div>
-      <button class="mbtn small" id="btn-clearslot">Vaciar hueco elegido</button>
-      <label class="flabel">Materiales y semillas (clic para asignar al hueco)</label>
-      <div id="invgrid" class="invgrid"></div>
-      <label class="flabel">Objetos — cosecha, comida y útiles</label>
-      <div id="objgrid" style="width:100%; display:flex; flex-direction:column; gap:6px;"></div>
-      <label class="flabel">Fabricar</label>
-      <div id="craft" style="width:100%; display:flex; flex-direction:column; gap:8px;"></div>
+      <div class="tabs">
+        <button class="tab sel" data-tab="bag">🎒 Mochila</button>
+        <button class="tab" data-tab="equip">⚔ Equipo</button>
+        <button class="tab" data-tab="craft">🔨 Fabricar</button>
+      </div>
+
+      <div id="tab-bag" class="tabpane">
+        <label class="flabel">Huecos del cinturón (teclas 6–9) — elige un hueco y luego un material</label>
+        <div id="belt" class="invgrid"></div>
+        <button class="mbtn small" id="btn-clearslot">Vaciar hueco elegido</button>
+        <label class="flabel">Materiales y semillas (clic para asignar al hueco)</label>
+        <div id="invgrid" class="invgrid"></div>
+        <label class="flabel">Objetos — cosecha, comida y útiles</label>
+        <div id="objgrid" style="width:100%; display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+
+      <div id="tab-equip" class="tabpane" style="display:none;">
+        <label class="flabel">Tu equipo — armas y armaduras (no ocupan los huecos del cinturón)</label>
+        <div id="equipbox" style="width:100%; display:flex; flex-direction:column; gap:6px;"></div>
+        <div class="hint">Las armas y armaduras se forjan en la <b>forja</b> (fabrícala con 8 piedra labrada y colócala). ¡No necesitan hueco en el cinturón!</div>
+      </div>
+
+      <div id="tab-craft" class="tabpane" style="display:none;">
+        <label class="flabel">Fabricar</label>
+        <div id="craft" style="width:100%; display:flex; flex-direction:column; gap:8px;"></div>
+      </div>
+
       <button class="mbtn small" id="btn-inv-close">▶ Volver al juego (E)</button>
     </div>
   </div>
@@ -3453,6 +3478,7 @@ function renderInv() {
     row.append(btn, lbl);
     craft.appendChild(row);
   }
+  setInvTab(invTab);    // mantener la pestaña elegida visible
 }
 
 /* ----- chat de ayuda sin conexión (tecla C): un guía con base de conocimiento ----- */
@@ -3717,6 +3743,15 @@ function renderMinimap() {
 }
 
 $('btn-clearslot').onclick = () => { hotbarMats[invSelSlot] = null; saveDirty = true; refreshHotbar(); renderInv(); };
+let invTab = 'bag';
+function setInvTab(name) {
+  invTab = name;
+  for (const t of ['bag', 'equip', 'craft']) { const el = $('tab-' + t); if (el) el.style.display = (t === name) ? 'flex' : 'none'; }
+  document.querySelectorAll('#scr-inv .tab').forEach(b => b.classList.toggle('sel', b.dataset.tab === name));
+  const sc = $('scr-inv'); if (sc) sc.scrollTop = 0;
+}
+document.querySelectorAll('#scr-inv .tab').forEach(b => b.onclick = () => setInvTab(b.dataset.tab));
+
 $('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-chest-close').onclick = () => { openChestKey = null; if (inWorld) canvas.requestPointerLock(); };
 $('btn-forge-close').onclick = () => { forgeOpen = false; if (inWorld) canvas.requestPointerLock(); };
