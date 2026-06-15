@@ -154,6 +154,22 @@
   .winfo span { font-size:12px; color:#9a8a66; font-family:monospace; }
   .empty { color:#9a8a66; font-style:italic; padding:14px; text-align:center; }
 
+  /* ---------- chat de ayuda (tecla C) ---------- */
+  #help-log {
+    width:100%; height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;
+    padding:8px; background:rgba(0,0,0,.3); border-radius:8px; border:1px solid rgba(190,160,90,.25);
+  }
+  .hmsg { max-width:86%; padding:8px 12px; border-radius:12px; font-size:14px; line-height:1.5; }
+  .hmsg.you { align-self:flex-end; background:rgba(190,160,90,.28); color:#f4ecd4; border:1px solid rgba(190,160,90,.5); border-bottom-right-radius:3px; }
+  .hmsg.g   { align-self:flex-start; background:rgba(26,30,24,.85); color:#ddd3b8; border:1px solid rgba(120,130,90,.35); border-bottom-left-radius:3px; }
+  .hmsg.g b { color:#e8c860; }
+  #help-chips { display:flex; flex-wrap:wrap; gap:6px; width:100%; }
+  .chip {
+    background:rgba(190,160,90,.14); border:1px solid rgba(190,160,90,.4); color:#cbb27c;
+    font-family:Georgia, serif; font-size:12px; padding:5px 11px; border-radius:14px; cursor:pointer;
+  }
+  .chip:hover { background:rgba(190,160,90,.3); color:#f0e6c8; }
+
   #join-status { color:#cfe3a8; font-size:15px; min-height:20px; font-style:italic; }
   #scr-pause { cursor:pointer; }
   .clickplay { color:#fff; font-size:22px; letter-spacing:4px; animation:pulse 1.8s infinite; }
@@ -205,7 +221,7 @@
     </div>
     <div class="hint">
       W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · clic izq golpear (cada clic, un golpe) · clic der colocar<br>
-      1–5 herramientas · 6–9 materiales · E inventario · M mapa de la Tierra Media · R volver a La Comarca · ESC menú
+      1–5 herramientas · 6–9 materiales · E inventario · M mapa · <b>C ayuda de Gandalf</b> · R volver a La Comarca · ESC menú
     </div>
   </div>
 
@@ -235,6 +251,8 @@
   <div class="screen" id="scr-inv">
     <h2>INVENTARIO</h2>
     <div class="panel" style="max-width:640px;">
+      <label class="flabel">⚔ Equipo — armas y armaduras (se forjan en la forja, no ocupan el cinturón)</label>
+      <div id="equipbox" style="width:100%; display:flex; flex-direction:column; gap:6px;"></div>
       <label class="flabel">Huecos del cinturón (teclas 6–9) — elige un hueco y luego un material</label>
       <div id="belt" class="invgrid"></div>
       <button class="mbtn small" id="btn-clearslot">Vaciar hueco elegido</button>
@@ -272,6 +290,19 @@
     </div>
   </div>
 
+  <div class="screen" id="scr-help">
+    <h2>📜 LA AYUDA DE GANDALF</h2>
+    <div class="panel" style="max-width:560px;">
+      <div id="help-log"></div>
+      <div id="help-chips"></div>
+      <div class="row">
+        <input type="text" id="help-input" maxlength="80" placeholder="Pregúntame… ej: ¿cómo mato una araña?">
+        <button class="mbtn small" id="help-send">Preguntar</button>
+      </div>
+      <button class="mbtn small" id="btn-help-close">▶ Volver al juego (C)</button>
+    </div>
+  </div>
+
   <div class="screen" id="scr-map">
     <h2>LA TIERRA MEDIA</h2>
     <div class="panel" style="max-width:620px;">
@@ -290,7 +321,7 @@
       <button class="mbtn small" id="btn-copy" style="display:none;">📋 Copiar código</button>
       <button class="mbtn small" id="btn-exit">💾 Guardar y salir al menú</button>
     </div>
-    <div class="hint">W A S D · ESPACIO · SHIFT correr · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · R: spawn</div>
+    <div class="hint">W A S D · ESPACIO · SHIFT correr · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · <b>C: ayuda</b> · R: spawn</div>
   </div>
 
 </div>
@@ -3012,7 +3043,7 @@ let menuScreen = 'main', worldsMode = 'sp';
 function showScreen(s) {
   menuScreen = s;
   $('menu').style.display = s ? 'flex' : 'none';
-  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map', 'scr-forge'])
+  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map', 'scr-forge', 'scr-help'])
     $(id).style.display = (id === 'scr-' + s) ? 'flex' : 'none';
   if (s === 'pause') refreshPause();
   if (s === 'worlds') renderWorldList();
@@ -3020,6 +3051,7 @@ function showScreen(s) {
   if (s === 'chest') renderChest();
   if (s === 'map') renderMap();
   if (s === 'forge') renderForge();
+  if (s === 'help') setTimeout(() => { const i = $('help-input'); if (i) i.focus(); }, 30);
 }
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -3300,7 +3332,44 @@ function makeIslot(id, count, onclick) {
   return d;
 }
 
+const TIER_COLOR = { base:'#9a9a9a', none:'#666', iron:'#c9c9cf', steel:'#9fb0c4', silver:'#dfe9f0', blackiron:'#7a3a44', mithril:'#9fe8e6', morgul:'#a8d8da' };
+function drawArmorIcon(g, tier) {
+  g.clearRect(0, 0, 36, 36); const c = TIER_COLOR[tier] || '#777';
+  g.fillStyle = c;
+  g.beginPath(); g.moveTo(8, 10); g.lineTo(28, 10); g.lineTo(27, 27); g.quadraticCurveTo(18, 33, 9, 27); g.closePath(); g.fill();
+  g.fillRect(4, 10, 6, 5); g.fillRect(26, 10, 6, 5);                 // hombreras
+  g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(17, 11, 2, 17);
+  g.fillStyle = 'rgba(255,255,255,.3)'; g.fillRect(11, 12, 3, 2);
+}
+function drawSwordIcon(g, tier) {
+  g.clearRect(0, 0, 36, 36); const c = TIER_COLOR[tier] || '#777';
+  g.strokeStyle = c; g.lineWidth = 4; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(10, 28); g.lineTo(26, 9); g.stroke();
+  g.strokeStyle = '#7a5a30'; g.lineWidth = 3; g.beginPath(); g.moveTo(7, 31); g.lineTo(13, 24); g.stroke();
+  g.strokeStyle = '#caa040'; g.lineWidth = 3; g.beginPath(); g.moveTo(9, 23); g.lineTo(16, 28); g.stroke();
+}
+function renderEquip() {
+  const box = $('equipbox'); box.innerHTML = '';
+  const rows = [
+    { draw: g => drawToolIcon(g, 'pick'), name: 'Herramientas', val: NAME_TIER[toolTier.pick],
+      note: toolTier.pick === 'base' ? '— básicas (fórjalas para picar más rápido)' : '— picas, cavas y talas más rápido' },
+    { draw: g => drawArmorIcon(g, armorTier), name: 'Armadura', val: armorTier === 'none' ? 'sin armadura' : NAME_TIER[armorTier],
+      note: armorTier === 'mithril' ? '— inmune al fuego y la lava' : armorTier === 'blackiron' ? '— muy recia, pero pesa' : armorTier === 'none' ? '— ¡fórjate una en la forja!' : '— amortigua los golpes' },
+    { draw: g => drawSwordIcon(g, weaponTier), name: 'Arma', val: weaponTier === 'none' ? 'puños' : WEAPON_NAME[weaponTier],
+      note: weaponTier === 'none' ? '— forja una espada para luchar' : '— daño ' + WEAPON_DMG[weaponTier] },
+  ];
+  for (const r of rows) {
+    const row = document.createElement('div'); row.className = 'craftrow';
+    const ic = document.createElement('canvas'); ic.width = ic.height = 36; ic.style.width = ic.style.height = '36px';
+    r.draw(ic.getContext('2d'));
+    const lbl = document.createElement('span'); lbl.style.flex = '1';
+    lbl.innerHTML = '<b style="color:#e8c860">' + r.name + ':</b> ' + r.val + ' <span style="color:#9a8a66">' + r.note + '</span>';
+    row.append(ic, lbl); box.append(row);
+  }
+}
+
 function renderInv() {
+  renderEquip();
   const belt = $('belt');
   belt.innerHTML = '';
   for (let j = 0; j < NMAT; j++) {
@@ -3367,6 +3436,8 @@ function renderInv() {
       go: () => { removeInv(B.PLANK, 4); addInv(I.PIPE, 1); toast('+1 Pipa  (fúmala con hierba para pipa)'); } },
     { label: '3 grano de cebada + 3 tablones → 1 barril de cerveza', can: inv[I.BARLEY_GRAIN] >= 3 && inv[B.PLANK] >= 3,
       go: () => { removeInv(I.BARLEY_GRAIN, 3); removeInv(B.PLANK, 3); addInv(B.BARREL, 1); toast('+1 Barril  (colócalo; clic derecho para servir cerveza)'); } },
+    { label: '8 piedra labrada → 1 forja (para fundir metal)', can: inv[B.COBBLE] >= 8,
+      go: () => { removeInv(B.COBBLE, 8); addInv(B.FORGE, 1); toast('+1 Forja  (colócala y clic derecho para fundir y forjar)'); } },
   ];
   for (const r of recipes) {
     const row = document.createElement('div');
@@ -3382,6 +3453,65 @@ function renderInv() {
     row.append(btn, lbl);
     craft.appendChild(row);
   }
+}
+
+/* ----- chat de ayuda sin conexión (tecla C): un guía con base de conocimiento ----- */
+let helpOpen = false, helpStarted = false;
+const normTxt = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const HELP_KB = [
+  { k:['arana','aranas','spider','telarana','mirkwood'], a:'Para matar una <b>araña</b>: fórjate una espada (la <b>daga élfica</b> de plata les hace daño extra) y golpéala con clic izquierdo. ¡Te envenenan! Lleva <b>hojas de athelas</b> para curar el veneno. Salen de noche en los bosques.' },
+  { k:['armadura','armaduras','armor','proteger','protege','proteccion'], a:'Para hacer <b>armadura</b>: pica <b>mineral de hierro</b> bajo tierra, fabrica una <b>forja</b> (8 piedra labrada, menú E), colócala y ábrela con clic derecho. Funde el mineral en lingotes y forja la armadura. La de <b>mithril</b> es la mejor: inmune al fuego y la lava.' },
+  { k:['forja','forjar','fundir','horno','smelt','lingote','lingotes'], a:'La <b>forja</b> se fabrica con <b>8 piedra labrada</b> (sale de picar piedra) en el menú E. Colócala y clic derecho: a la izquierda fundes mineral en lingotes, a la derecha forjas herramientas, armas y armaduras.' },
+  { k:['espada','arma','armas','weapon','sword','luchar','combatir','pelear'], a:'Fórjate una <b>espada</b> en la forja: funde hierro en lingotes y forja un arma. La <b>espada de Gondor</b> (acero) y la de <b>mithril</b> son las mejores. Ataca con clic izquierdo apuntando al enemigo.' },
+  { k:['mithril'], a:'El <b>mithril</b> es el mineral más raro, en las capas más <b>profundas</b> (cava por debajo de y24). Con él forjas la mejor armadura (inmune a la lava) y herramientas rapidísimas.' },
+  { k:['hierro','iron'], a:'El <b>hierro</b> está bajo tierra; pícalo con el pico. Fúndelo en la <b>forja</b> para hacer lingotes, la base de tus herramientas y armaduras.' },
+  { k:['oro','gold','pepita','pepitas','manzana'], a:'El <b>oro</b> está bajo tierra. Fúndelo en lingotes y luego en <b>pepitas</b>; con 8 pepitas haces una <b>manzana de oro</b> para domar caballos al instante o curarte mucho.' },
+  { k:['veneno','envenena','intoxic'], a:'El <b>veneno</b> (de las arañas) se cura con <b>hojas de athelas</b>: búscalas en Lothlórien o cultívalas, y úsalas desde el inventario (E).' },
+  { k:['vida','curar','curarme','salud','heal','corazon','corazones','recuperar','athelas'], a:'Te recuperas solo con el tiempo si estás a salvo. Para curarte rápido usa <b>athelas</b> o una <b>manzana de oro</b>. <b>Fumar la pipa</b> acelera tu regeneración.' },
+  { k:['caballo','montar','montura','horse','rohan','cabalgar'], a:'Acércate a un <b>caballo</b> y dale de comer con clic derecho (<b>grano de cebada</b> ×4, o una <b>manzana de oro</b> al instante). Cuando esté domado, clic derecho para montarlo. <b>F</b> para bajar.' },
+  { k:['cabra','goat','montana','escalar','trepar'], a:'La <b>cabra de Erebor</b> (en las montañas) <b>trepa</b> laderas y no sufre daño por caídas. Dómala con grano y móntala con clic derecho.' },
+  { k:['poni','pony','alforja','alforjas'], a:'El <b>poni</b> lleva <b>alforjas</b>: móntalo y pulsa <b>E</b> para guardar materiales en su bolsa.' },
+  { k:['cultivo','sembrar','plantar','farm','galenas','cebada','semilla','semillas','arar','huerto','agricultura'], a:'Labra la tierra con la <b>pala</b> (clic derecho sobre hierba), siembra <b>semillas</b> de galenas o cebada con clic derecho y espera a que crezcan. Las semillas salen de romper hierba.' },
+  { k:['pipa','pipe','fumar'], a:'Fabrica una <b>pipa</b> con 4 tablones. Fúmala (con hierba para pipa) desde el inventario para recuperarte más rápido.' },
+  { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
+  { k:['cofre','chest','almacen','guardar'], a:'Fabrica un <b>cofre</b> con 8 tablones. Colócalo y clic derecho para guardar materiales. ¡Cuidado, la madera arde!' },
+  { k:['puerta','door'], a:'Fabrica una <b>puerta</b> con 4 tablones. Clic derecho para abrirla y cerrarla.' },
+  { k:['nazgul','jefe','espectro','morgul'], a:'El <b>Nazgûl</b> es un jefe rarísimo de la noche profunda; te paraliza de miedo. Derrótalo con la mejor espada y buena armadura para conseguir una <b>Hoja de Morgul</b>.' },
+  { k:['enemigo','enemigos','orco','orcos','uruk','noche','monstruo','hostil'], a:'De <b>noche</b> aparecen orcos, uruk-hai y arañas (de día solo en Mordor). Llévalos a punta de espada. Sueltan <b>hierro negro</b>, ideal para la armadura más recia.' },
+  { k:['mapa','map','perder','perdido','norte','brujula','orientar'], a:'Pulsa <b>M</b> para ver el mapa de la Tierra Media, o mira el <b>minimapa</b> de la esquina. La <b>N</b> marca el norte; tú eres la flecha roja.' },
+  { k:['mordor','barad','sauron'], a:'<b>Mordor</b> está al sureste, con lava, basalto y <b>Barad-dûr</b>. Siempre es hostil. Lleva armadura de <b>mithril</b> (inmune a la lava).' },
+  { k:['argonath','estatua','estatuas','coloso','colosos'], a:'Los <b>Argonath</b> son dos colosos de piedra blanca junto al río Anduin (al este). Búscalos en el mapa (M).' },
+  { k:['ruina','ruinas','tesoro','cripta','saquear'], a:'En las <b>ruinas</b> de piedra musgosa, pica el <b>suelo del centro</b> para abrir una cripta con <b>oro y mithril</b>.' },
+  { k:['mallorn','iluminar','antorcha'], a:'Consigue una <b>nuez de mallorn</b> (cosechando un brote) y plántala: crece un árbol dorado que <b>ilumina</b> la zona de noche.' },
+  { k:['lava','fuego','quemar','quema','arde','incendio'], a:'La <b>lava</b> quema la hierba y la madera. El <b>agua</b> la enfría y la vuelve piedra. La armadura de <b>mithril</b> te hace inmune al fuego.' },
+  { k:['construir','colocar','build','edificar'], a:'Elige un material en los huecos <b>6–9</b> del cinturón (asígnalo en el menú E) y colócalo con <b>clic derecho</b>.' },
+  { k:['picar','romper','minar','mine','pico','pala','hacha','herramienta','herramientas'], a:'Pulsa <b>clic izquierdo</b> para picar (cada clic, un golpe). Usa el <b>pico</b> para piedra, la <b>pala</b> para tierra, el <b>hacha</b> para madera. Fórjate herramientas de metal para ir más rápido.' },
+  { k:['cienaga','cienagas','pantano','lodo'], a:'Las <b>Ciénagas de los Muertos</b> tienen lodo que te frena, niebla y fuegos de almas. Crúzalas con cuidado, mejor a caballo.' },
+  { k:['multijugador','amigo','hermano','sala','online','jugar juntos'], a:'Para jugar juntos: uno pulsa «Crear partida online» y comparte el <b>código de 5 letras</b>; el otro pulsa «Unirse con código».' },
+];
+const HELP_CHIPS = ['¿Cómo mato una araña?', '¿Cómo hago una armadura?', '¿Cómo hago una forja?', '¿Cómo consigo mithril?', '¿Cómo domo un caballo?', '¿Cómo planto cultivos?', '¿Dónde está Mordor?'];
+function addHelpMsg(who, html) {
+  const log = $('help-log');
+  const d = document.createElement('div'); d.className = 'hmsg ' + who; d.innerHTML = html;
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+}
+function askHelp(q) {
+  q = (q || '').trim(); if (!q) return;
+  addHelpMsg('you', q.replace(/[<>]/g, ''));
+  const nq = normTxt(q);
+  let best = null, bestScore = 0;
+  for (const e of HELP_KB) { let s = 0; for (const kw of e.k) if (nq.includes(normTxt(kw))) s += kw.length;
+    if (s > bestScore) { bestScore = s; best = e; } }
+  const ans = best ? best.a : 'No estoy seguro de eso, querido amigo. Prueba a preguntar por: <b>armadura, espada, arañas, forja, mithril, caballos, cultivos</b>… o toca una de las sugerencias de abajo.';
+  setTimeout(() => addHelpMsg('g', ans), 160);
+  $('help-input').value = '';
+}
+function openHelp() {
+  helpOpen = true; document.exitPointerLock();
+  if (!helpStarted) { helpStarted = true;
+    addHelpMsg('g', '¡Salud, viajero! Soy tu guía en la Tierra Media. Pregúntame lo que necesites — por ejemplo «¿cómo mato una araña?» o «¿cómo hago una armadura?». También puedes tocar una sugerencia.'); }
+  const chips = $('help-chips'); chips.innerHTML = '';
+  for (const q of HELP_CHIPS) { const c = document.createElement('div'); c.className = 'chip'; c.textContent = q; c.onclick = () => askHelp(q); chips.appendChild(c); }
 }
 
 function openChest(k) {
@@ -3590,6 +3720,9 @@ $('btn-clearslot').onclick = () => { hotbarMats[invSelSlot] = null; saveDirty = 
 $('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-chest-close').onclick = () => { openChestKey = null; if (inWorld) canvas.requestPointerLock(); };
 $('btn-forge-close').onclick = () => { forgeOpen = false; if (inWorld) canvas.requestPointerLock(); };
+$('btn-help-close').onclick = () => { helpOpen = false; if (inWorld) canvas.requestPointerLock(); };
+$('help-send').onclick = () => askHelp($('help-input').value);
+$('help-input').addEventListener('keydown', e => { if (e.key === 'Enter') askHelp($('help-input').value); });
 
 function updateNetInfo() {
   const el = $('netinfo');
@@ -3621,12 +3754,13 @@ let heldBtn = null, heldT = 0;
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   digState = null; hideDigbar();
-  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; forgeOpen = false; showScreen(null); }
+  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; forgeOpen = false; helpOpen = false; showScreen(null); }
   else if (inWorld) {
     if (openChestKey) showScreen('chest');
     else if (forgeOpen) showScreen('forge');
     else if (invOpen) showScreen('inv');
     else if (mapOpen) showScreen('map');
+    else if (helpOpen) showScreen('help');
     else { showScreen('pause'); saveWorld(); savePlayerStash(); }
   }
   keys.clear(); heldBtn = null;
@@ -3638,9 +3772,14 @@ document.addEventListener('mousemove', e => {
   pitch = Math.max(-1.55, Math.min(1.55, pitch));
 });
 document.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;   // escribiendo en un campo: no disparar teclas del juego
   if (e.code === 'Space' && locked) e.preventDefault();
   keys.add(e.code);
   if (e.code === 'KeyR' && locked) respawn();
+  if (e.code === 'KeyC' && inWorld) {
+    if (locked) openHelp();
+    else if (helpOpen) { helpOpen = false; canvas.requestPointerLock(); }
+  }
   if (e.code === 'KeyE' && inWorld) {
     if (locked) {
       if (player.mount && player.mount.def.mount.storage) openMountBag();   // alforjas del poni

@@ -31,8 +31,15 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 | 6–9 | huecos de materiales |
 | E | inventario y fabricación |
 | M | mapa de la Tierra Media |
+| C | ayuda de Gandalf (chat de preguntas) |
 | R | volver a La Comarca |
 | Esc | menú |
+
+## 📜 Ayuda en el juego
+
+Pulsa **C** en cualquier momento para abrir el **chat de ayuda de Gandalf**: escribe tu pregunta («¿cómo mato una araña?», «¿cómo hago una armadura?», «¿cómo domo un caballo?»…) o toca una de las sugerencias, y te responde al instante. Funciona sin conexión (es una guía integrada).
+
+En el inventario (**E**), arriba del todo, tienes una sección de **Equipo** que muestra por separado tus **armas y armaduras** (se forjan en la forja y no ocupan los huecos del cinturón).
 
 ## Herramientas, inventario y cofres
 
