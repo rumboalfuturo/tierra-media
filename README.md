@@ -50,6 +50,13 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 - **Lecho de lana**: con **3 de lana** fabricas un lecho; colócalo y **clic derecho de noche para dormir** y saltar hasta el amanecer.
 - **Obsidiana**: cuando el **agua toca la lava** se forma obsidiana (un bloque muy resistente), en vez de piedra.
 
+## 🔦 Antorchas, escaleras, misiones y recetas
+
+- **Antorchas** (1 tablón → 4): colócalas para **iluminar de noche** y **ahuyentar enemigos** (no aparecen cerca).
+- **Escaleras** de madera (3 tablones → 4) o de piedra (3 piedra labrada → 4): colócalas en una pared y **súbelas pulsando W o ESPACIO** (bajas con S); no hacen daño de caída.
+- **Misiones**: arriba a la izquierda tienes un objetivo que te guía (consigue madera, fabrica tijeras, duerme, coloca una antorcha, explora una cueva…). Se completan solas al hacerlas.
+- **Libro de recetas** (tecla **B**): lista todas las recetas; en **verde** las que puedes hacer y en **rojo** las que te faltan materiales.
+
 ## 📜 Ayuda en el juego
 
 Pulsa **C** en cualquier momento para abrir el **chat de ayuda de Gandalf**: escribe tu pregunta («¿cómo mato una araña?», «¿cómo hago una armadura?», «¿cómo domo un caballo?»…) o toca una de las sugerencias, y te responde al instante. Funciona sin conexión (es una guía integrada).

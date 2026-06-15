@@ -62,6 +62,12 @@
     font-family:monospace; text-shadow:0 1px 3px #000; pointer-events:none; display:none;
   }
   body.ingame #gearinfo { display:block; }
+  #quest {
+    position:fixed; top:44px; left:14px; max-width:260px; color:#e8e0c4; font-size:14px;
+    text-shadow:0 1px 4px #000; pointer-events:none; display:none; line-height:1.4;
+  }
+  #quest b { color:#e8c860; }
+  body.ingame #quest { display:block; }
   #netinfo {
     position:fixed; top:12px; right:14px; color:#cfe3a8; font-size:14px;
     font-family:monospace; text-shadow:0 1px 4px #000; pointer-events:none;
@@ -202,6 +208,7 @@
 <div id="biome"></div>
 <div id="coords"></div>
 <div id="gearinfo"></div>
+<div id="quest"></div>
 <div id="netinfo"></div>
 <canvas id="minimap" width="150" height="150"></canvas>
 <canvas id="healthbar" width="230" height="22"></canvas>
@@ -233,7 +240,7 @@
     </div>
     <div class="hint">
       W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · clic izq golpear (cada clic, un golpe) · clic der colocar<br>
-      1–5 herramientas · 6–9 materiales · E inventario · M mapa · C ayuda · <b>V cámara 1ª/3ª persona</b> · R volver a La Comarca · ESC menú
+      1–5 herramientas · 6–9 materiales · E inventario · M mapa · C ayuda · <b>B libro de recetas</b> · V cámara · R volver a La Comarca · ESC menú
     </div>
   </div>
 
@@ -318,6 +325,15 @@
     </div>
   </div>
 
+  <div class="screen" id="scr-recipes">
+    <h2>📖 LIBRO DE RECETAS</h2>
+    <div class="panel" style="max-width:600px;">
+      <div id="recipe-list" style="width:100%; display:flex; flex-direction:column; gap:5px;"></div>
+      <div class="hint">Verde = tienes los materiales · rojo = te faltan. Se fabrica en el menú E (🔨) o en la forja.</div>
+      <button class="mbtn small" id="btn-recipes-close">▶ Volver al juego (B)</button>
+    </div>
+  </div>
+
   <div class="screen" id="scr-help">
     <h2>📜 LA AYUDA DE GANDALF</h2>
     <div class="panel" style="max-width:560px;">
@@ -349,7 +365,7 @@
       <button class="mbtn small" id="btn-copy" style="display:none;">📋 Copiar código</button>
       <button class="mbtn small" id="btn-exit">💾 Guardar y salir al menú</button>
     </div>
-    <div class="hint">W A S D · ESPACIO · SHIFT · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · C: ayuda · <b>V: cámara</b> · R: spawn</div>
+    <div class="hint">W A S D · ESPACIO · SHIFT · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · C: ayuda · <b>B: recetas</b> · V: cámara · R: spawn</div>
   </div>
 
 </div>
@@ -397,7 +413,9 @@ const B = {
   IRONORE:34, GOLDORE:35, SILVERORE:36, BIRONORE:37, FORGE:38, GOLDBLOCK:39,
   MOSSYSTONE:40, BASALT:41, ASH:42, MUD:43, SOULFIRE:44,
   WOOL:45, BED:46, OBSIDIAN:47,
+  TORCH:48, LADDER:49, LADDERS:50,   // antorcha, escalera de madera, escalera de piedra
 };
+const isLadder = id => id === B.LADDER || id === B.LADDERS;
 const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
 // mineral → lingote al fundir en la forja (B.MITHRIL incluido)
 const SMELT = { [B.IRONORE]:'iron', [B.GOLDORE]:'gold', [B.SILVERORE]:'silver', [B.BIRONORE]:'biron', [B.MITHRIL]:'mithril' };
@@ -438,6 +456,7 @@ const NAMES = {
   [B.BIRONORE]:'Mineral de hierro negro', [B.FORGE]:'Forja (alto horno)', [B.GOLDBLOCK]:'Bloque de oro',
   [B.MOSSYSTONE]:'Piedra musgosa', [B.BASALT]:'Basalto', [B.ASH]:'Ceniza', [B.MUD]:'Lodo', [B.SOULFIRE]:'Fuego de almas',
   [B.WOOL]:'Lana', [B.BED]:'Lecho de lana', [B.OBSIDIAN]:'Obsidiana',
+  [B.TORCH]:'Antorcha', [B.LADDER]:'Escalera de madera', [B.LADDERS]:'Escalera de piedra',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
@@ -462,7 +481,8 @@ const NMAT = 4;
 // materiales que se pueden tener en el inventario
 const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
                    B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.IRONORE, B.GOLDORE, B.SILVERORE, B.BIRONORE,
-                   B.GOLDBLOCK, B.MOSSYSTONE, B.BASALT, B.ASH, B.MUD, B.SOULFIRE, B.OBSIDIAN, B.WOOL, B.BED, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
+                   B.GOLDBLOCK, B.MOSSYSTONE, B.BASALT, B.ASH, B.MUD, B.SOULFIRE, B.OBSIDIAN, B.WOOL, B.BED,
+                   B.TORCH, B.LADDER, B.LADDERS, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
                 [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
@@ -490,8 +510,8 @@ const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3, MARSH:4 };
 const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor', 'Ciénagas de los Muertos'];
 
 const isFluid  = id => id === B.WATER || id === B.LAVA;
-const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.SOULFIRE && id !== B.DOORXO && id !== B.DOORZO && !isPlant(id);
-const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || id === B.SOULFIRE || isDoorId(id) || isPlant(id);
+const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.SOULFIRE && id !== B.TORCH && id !== B.DOORXO && id !== B.DOORZO && !isLadder(id) && !isPlant(id);
+const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || id === B.SOULFIRE || id === B.TORCH || isDoorId(id) || isLadder(id) || isPlant(id);
 
 /* ============================================================
    RUIDO (value noise + fBm, determinista)
@@ -676,6 +696,36 @@ function applyChestMsg(k, c) {
 const nowMs = () => performance.now();
 const crops = new Map();        // "x,y,z" -> { type, t }   t = performance.now() al plantar
 const barrelCool = new Map();   // "x,y,z" -> último uso del barril
+const torches = new Set();      // "x,y,z" de antorchas (para que no aparezcan enemigos cerca)
+
+/* ----- misiones que guían al jugador ----- */
+const questFlags = { slept: false, torchPlaced: false, chestUsed: false, caveExplored: false };
+let questIdx = 0;
+const QUESTS = [
+  { text: 'Consigue madera (tala un árbol)',          done: () => (inv[B.LOG] || 0) + (inv[B.MLOG] || 0) + (inv[B.PLANK] || 0) > 0 },
+  { text: 'Consigue piedra (pícala con el pico)',     done: () => (inv[B.COBBLE] || 0) > 0 },
+  { text: 'Fabrica una forja (8 piedra labrada)',     done: () => (inv[B.FORGE] || 0) > 0 },
+  { text: 'Fabrica unas tijeras en la forja',         done: () => (inv[I.SHEARS] || 0) > 0 },
+  { text: 'Esquila una oveja para conseguir lana',    done: () => (inv[B.WOOL] || 0) > 0 },
+  { text: 'Fabrica un lecho de lana',                 done: () => (inv[B.BED] || 0) > 0 || questFlags.slept },
+  { text: 'Duerme una noche en el lecho',             done: () => questFlags.slept },
+  { text: 'Coloca una antorcha',                      done: () => questFlags.torchPlaced },
+  { text: 'Guarda algo en un cofre',                  done: () => questFlags.chestUsed },
+  { text: 'Explora bajo tierra (baja a una cueva)',   done: () => questFlags.caveExplored },
+];
+let questT = 0;
+function updateQuests(now) {
+  if (now - questT < 800) return;
+  questT = now;
+  const el = $('quest');
+  if (questIdx >= QUESTS.length) { el.innerHTML = '📜 <b>¡Has completado todas las misiones!</b>'; return; }
+  const q = QUESTS[questIdx];
+  if (q.done()) {
+    questIdx++; saveDirty = true; toast('✅ ¡Misión completada! ' + q.text);
+    if (questIdx < QUESTS.length) setTimeout(() => toast('📜 Nueva misión: ' + QUESTS[questIdx].text), 1900);
+  }
+  el.innerHTML = questIdx < QUESTS.length ? '📜 <b>Misión:</b> ' + QUESTS[questIdx].text : '📜 <b>¡Todas completadas!</b>';
+}
 const GROW = { pipeweed: 75000, barley: 80000, mallorn: 100000 };
 const CROP_TYPE = { [B.PIPEWEEDY]: 'pipeweed', [B.BARLEYY]: 'barley', [B.MSPROUT]: 'mallorn' };
 
@@ -715,6 +765,7 @@ function playerSetBlock(wx, wy, wz, id) {
   const prev = worldGetBlock(wx, wy, wz);
   if (prev === B.CHEST && id !== B.CHEST && chests.has(k)) { chests.delete(k); broadcastChest(k, null); }
   if (CROP_TYPE[prev] && id !== prev) crops.delete(k);
+  if (id === B.TORCH) torches.add(k); else if (prev === B.TORCH) torches.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
   if (CROP_TYPE[id]) registerCrop(wx, wy, wz, id);
@@ -732,6 +783,7 @@ function netApplySet(wx, wy, wz, id) {
   const prev = worldGetBlock(wx, wy, wz);
   if (prev === B.CHEST && id !== B.CHEST) chests.delete(k);
   if (CROP_TYPE[prev] && id !== prev) crops.delete(k);
+  if (id === B.TORCH) torches.add(k); else if (prev === B.TORCH) torches.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
   if (isHost) { registerCrop(wx, wy, wz, id); saveDirty = true; queueReactAround(wx, wy, wz); scheduleFluidAround(wx, wy, wz); }
@@ -1595,6 +1647,21 @@ const TILE_PAINTERS = [
     for (let i = 0; i < 5; i++) { actx.fillStyle = 'rgba(110,70,150,.5)';
       actx.fillRect(ox + ((rng() * 13) | 0), oy + ((rng() * 13) | 0), 3, 2); }
   },
+  /* 49 torch (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(120, 84, 44); actx.fillRect(ox + 7, oy + 6, 2, 10);   // palo
+    actx.fillStyle = css(255, 170, 40); actx.fillRect(ox + 6, oy + 2, 4, 5);   // llama
+    actx.fillStyle = css(255, 230, 120); actx.fillRect(ox + 7, oy + 1, 2, 3);  // núcleo brillante
+  },
+  /* 50 ladder (madera, fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(150, 110, 64);
+    actx.fillRect(ox + 2, oy, 2, T); actx.fillRect(ox + 12, oy, 2, T);          // largueros
+    for (let y = 2; y < T; y += 4) actx.fillRect(ox + 2, oy + y, T - 4, 2);     // peldaños
+  },
+  /* 51 ladder_stone (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(140, 142, 146);
+    actx.fillRect(ox + 2, oy, 2, T); actx.fillRect(ox + 12, oy, 2, T);
+    for (let y = 2; y < T; y += 4) actx.fillRect(ox + 2, oy + y, T - 4, 2);
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1648,6 +1715,9 @@ const TILE_MAP = {
   [B.WOOL]:    { all: 46 },
   [B.BED]:     { all: 47 },
   [B.OBSIDIAN]:{ all: 48 },
+  [B.TORCH]:   { all: 49 },
+  [B.LADDER]:  { all: 50 },
+  [B.LADDERS]: { all: 51 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1685,6 +1755,7 @@ const matSolid = new THREE.MeshLambertMaterial({ map: atlasTex });
 const matWater = new THREE.MeshLambertMaterial({ map: atlasTex, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide });
 const matGlow  = new THREE.MeshBasicMaterial({ map: atlasTex });   // lava: brilla sin luz
 const matPlant = new THREE.MeshLambertMaterial({ map: atlasTex, alphaTest: 0.5, side: THREE.DoubleSide });  // cultivos: aspas con recorte
+const matPlantGlow = new THREE.MeshBasicMaterial({ map: atlasTex, alphaTest: 0.5, side: THREE.DoubleSide }); // antorchas: aspas luminosas
 
 const dirLight = new THREE.DirectionalLight(0xfff3d8, 2.2);
 scene.add(dirLight); scene.add(dirLight.target);
@@ -1748,6 +1819,7 @@ function buildChunkMesh(ch) {
     water: { pos: [], nor: [], uv: [], idx: [] },
     glow:  { pos: [], nor: [], uv: [], idx: [] },
     plant: { pos: [], nor: [], uv: [], idx: [] },
+    plantglow: { pos: [], nor: [], uv: [], idx: [] },
   };
   const baseX = ch.cx * CH, baseZ = ch.cz * CH;
   const data = ch.data;
@@ -1760,18 +1832,20 @@ function buildChunkMesh(ch) {
   for (let ly = 0; ly < WH; ly++) for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
     const id = data[IDX(lx, ly, lz)];
     if (!id) continue;
-    if (isPlant(id)) {   // cultivo: dos aspas cruzadas con recorte alfa
+    if (isPlant(id) || isLadder(id) || id === B.TORCH) {   // aspas cruzadas con recorte alfa (plantas, escaleras, antorchas)
+      const bk = id === B.TORCH ? buckets.plantglow : buckets.plant;
       const tile = tileFor(id, 0);
       const tx = tile % ACOLS, ty = (tile / ACOLS) | 0;
       const u0 = (tx + UV_E) / ACOLS, u1 = (tx + 1 - UV_E) / ACOLS;
       const v0 = ((AROWS - 1 - ty) + UV_E) / AROWS, v1 = ((AROWS - 1 - ty) + 1 - UV_E) / AROWS;
+      const y0 = 0, y1 = id === B.TORCH ? 0.6 : 1;     // la antorcha es más baja
       const quad = (ax, az, bx, bz) => {
-        const base = buckets.plant.pos.length / 3;
-        buckets.plant.pos.push(lx + ax, ly + 0, lz + az,  lx + bx, ly + 0, lz + bz,
-                               lx + ax, ly + 1, lz + az,  lx + bx, ly + 1, lz + bz);
-        for (let q = 0; q < 4; q++) buckets.plant.nor.push(0, 1, 0);
-        buckets.plant.uv.push(u0, v0, u1, v0, u0, v1, u1, v1);
-        buckets.plant.idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+        const base = bk.pos.length / 3;
+        bk.pos.push(lx + ax, ly + y0, lz + az,  lx + bx, ly + y0, lz + bz,
+                    lx + ax, ly + y1, lz + az,  lx + bx, ly + y1, lz + bz);
+        for (let q = 0; q < 4; q++) bk.nor.push(0, 1, 0);
+        bk.uv.push(u0, v0, u1, v0, u0, v1, u1, v1);
+        bk.idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
       };
       quad(0.15, 0.15, 0.85, 0.85);
       quad(0.15, 0.85, 0.85, 0.15);
@@ -1818,8 +1892,8 @@ function buildChunkMesh(ch) {
     }
   }
 
-  const mats = { solid: matSolid, water: matWater, glow: matGlow, plant: matPlant };
-  for (const name of ['solid', 'glow', 'plant', 'water']) {
+  const mats = { solid: matSolid, water: matWater, glow: matGlow, plant: matPlant, plantglow: matPlantGlow };
+  for (const name of ['solid', 'glow', 'plant', 'plantglow', 'water']) {
     const b = buckets[name];
     if (!b.idx.length) continue;
     const g = new THREE.BufferGeometry();
@@ -1894,7 +1968,7 @@ function resetWorld() {
   chunks.clear(); dirty.clear(); editsByChunk.clear();
   genQueue = []; lastPC = null;
   reactQueue.length = 0; fluidQ.length = 0; fluidLvl.clear(); fluidPending.clear(); fluidChg.clear(); fluidBurstStart = 0;
-  crops.clear(); barrelCool.clear();
+  crops.clear(); barrelCool.clear(); torches.clear();
   clearDrops(); clearParticles(); clearMobs();
   if (mountMesh) { scene.remove(mountMesh); mountMesh = null; }
   player.mount = null; chests.delete('@bag');
@@ -1991,6 +2065,13 @@ function physics(dt) {
     if (player.vy < -38) player.vy = -38;
   }
 
+  // escaleras: trepar suavemente al estar sobre ellas
+  if (!inFluid && (isLadder(worldGetBlock(Math.floor(player.x), Math.floor(player.y + 0.5), Math.floor(player.z)))
+                || isLadder(worldGetBlock(Math.floor(player.x), Math.floor(player.y + 1.3), Math.floor(player.z))))) {
+    player.vy = (keys.has('Space') || f > 0) ? 3.6 : (f < 0) ? -3.6 : -1.2;
+    peakY = player.y; wasAir = false;   // sin daño por caída en la escalera
+  }
+
   player.onGround = false;
   const maxDisp = Math.max(Math.abs(player.vx), Math.abs(player.vy), Math.abs(player.vz)) * dt;
   const steps = Math.max(1, Math.ceil(maxDisp / 0.4));
@@ -2062,7 +2143,7 @@ const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
 // golpes necesarios por bloque: cada clic es un golpe
 function hitsFor(id, tool) {
   let base, match;
-  if (isPlant(id) || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW || id === B.WOOL) return 1;
+  if (isPlant(id) || isLadder(id) || id === B.TORCH || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW || id === B.WOOL) return 1;
   if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW || id === B.FARMLAND) { base = 2; match = 'shovel'; }
   else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || id === B.BED || isDoorId(id)) { base = 4; match = 'axe'; }
   else if (id === B.OBSIDIAN) { base = 14; match = 'pick'; }   // muy resistente
@@ -2248,7 +2329,7 @@ function sleepInBed() {
   setTimeout(() => {
     if (isGuest) { if (hostConn && hostConn.open) hostConn.send({ t: 'sleep' }); }
     else { dayT = 0.02; if (isHost) broadcast({ t: 'day', dayT }); }   // amanece
-    toast('Has dormido hasta el amanecer'); heal(4);
+    toast('Has dormido hasta el amanecer'); heal(4); questFlags.slept = true;
     fx.textContent = 'Amanece…';
     setTimeout(() => { fx.style.opacity = 0; sleeping = false; }, 700);
   }, 1300);
@@ -2309,6 +2390,7 @@ function tryPlace(initial) {
     placed = Math.abs(_dir.x) > Math.abs(_dir.z) ? B.DOORX : B.DOORZ;
   }
   playerSetBlock(px, py, pz, placed);
+  if (placed === B.TORCH) { questFlags.torchPlaced = true; toast('Has colocado una antorcha'); }
 }
 
 /* ============================================================
@@ -2789,6 +2871,8 @@ function trySpawn(now) {
     if (isSolid(worldGetBlock(sx, y, sz)) && worldGetBlock(sx, y + 1, sz) === B.AIR && worldGetBlock(sx, y + 2, sz) === B.AIR) { gy = y + 1; break; }
   }
   if (gy < 0) return;
+  for (const tk of torches) { const p = tk.split(',');                                     // las antorchas ahuyentan a los enemigos
+    if (Math.abs(+p[0] - sx) < 7 && Math.abs(+p[2] - sz) < 7 && Math.abs(+p[1] - gy) < 7) return; }
   const biome = biomeAt(sx, sz);
   let type = null;
   if (biome === BIOME.MORDOR) type = Math.random() < 0.3 ? 'uruk' : 'orc';                 // Mordor: siempre
@@ -3169,6 +3253,7 @@ function saveWorld() {
     chests: Object.fromEntries([...chests].filter(([k]) => k[0] !== '@')),
     crops: cropList,
     gear: { tool: toolTier, armor: armorTier, weapon: weaponTier },
+    quest: { idx: questIdx, flags: questFlags },
   });
   currentWorld.last = Date.now();
   const i = worlds.findIndex(w => w.id === currentWorld.id);
@@ -3232,6 +3317,18 @@ function startWorld(meta, data, mode) {
   forgeOpen = false;
   updateGearHUD();
 
+  // misiones (progreso por mundo)
+  questIdx = (data?.quest && typeof data.quest.idx === 'number') ? data.quest.idx : 0;
+  questFlags.slept = !!data?.quest?.flags?.slept;
+  questFlags.torchPlaced = !!data?.quest?.flags?.torchPlaced;
+  questFlags.chestUsed = !!data?.quest?.flags?.chestUsed;
+  questFlags.caveExplored = !!data?.quest?.flags?.caveExplored;
+  questT = 0;
+  // reconstruir las antorchas guardadas (para el anti-aparición)
+  torches.clear();
+  for (const [ck, m] of editsByChunk) { const [cx, cz] = ck.split(',').map(Number);
+    for (const [lk, bid] of m) if (bid === B.TORCH) { const [lx, ly, lz] = lk.split(',').map(Number); torches.add((cx * 16 + lx) + ',' + ly + ',' + (cz * 16 + lz)); } }
+
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) genChunk(dx, dz);
 
   const p = data?.player;
@@ -3265,7 +3362,7 @@ let menuScreen = 'main', worldsMode = 'sp';
 function showScreen(s) {
   menuScreen = s;
   $('menu').style.display = s ? 'flex' : 'none';
-  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map', 'scr-forge', 'scr-help'])
+  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map', 'scr-forge', 'scr-help', 'scr-recipes'])
     $(id).style.display = (id === 'scr-' + s) ? 'flex' : 'none';
   if (s === 'pause') refreshPause();
   if (s === 'worlds') renderWorldList();
@@ -3274,6 +3371,7 @@ function showScreen(s) {
   if (s === 'map') renderMap();
   if (s === 'forge') renderForge();
   if (s === 'help') setTimeout(() => { const i = $('help-input'); if (i) i.focus(); }, 30);
+  if (s === 'recipes') renderRecipeBook();
 }
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -3668,6 +3766,12 @@ function renderInv() {
       go: () => { removeInv(B.COBBLE, 8); addInv(B.FORGE, 1); toast('+1 Forja  (colócala y clic derecho para fundir y forjar)'); } },
     { label: '3 lana → 1 lecho de lana', can: inv[B.WOOL] >= 3,
       go: () => { removeInv(B.WOOL, 3); addInv(B.BED, 1); toast('Has fabricado un lecho de lana  (colócalo y duerme de noche)'); } },
+    { label: '1 tablón → 4 antorchas', can: inv[B.PLANK] >= 1,
+      go: () => { removeInv(B.PLANK, 1); addInv(B.TORCH, 4); toast('Has fabricado 4 antorchas  (colócalas para iluminar y ahuyentar enemigos)'); } },
+    { label: '3 tablones → 4 escaleras de madera', can: inv[B.PLANK] >= 3,
+      go: () => { removeInv(B.PLANK, 3); addInv(B.LADDER, 4); toast('Has fabricado escaleras de madera  (colócalas y súbete pulsando W o ESPACIO)'); } },
+    { label: '3 piedra labrada → 4 escaleras de piedra', can: inv[B.COBBLE] >= 3,
+      go: () => { removeInv(B.COBBLE, 3); addInv(B.LADDERS, 4); toast('Has fabricado escaleras de piedra'); } },
   ];
   for (const r of recipes) {
     const row = document.createElement('div');
@@ -3745,6 +3849,43 @@ function openHelp() {
   for (const q of HELP_CHIPS) { const c = document.createElement('div'); c.className = 'chip'; c.textContent = q; c.onclick = () => askHelp(q); chips.appendChild(c); }
 }
 
+/* ----- libro de recetas (tecla B) ----- */
+let recipesOpen = false;
+const RECIPE_BOOK = [
+  { where: 'Menú E (🔨 Fabricar)', label: '4 Tablones', needs: [[B.LOG, 1]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '1 Cofre', needs: [[B.PLANK, 8]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '1 Puerta de madera', needs: [[B.PLANK, 4]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '1 Pipa', needs: [[B.PLANK, 4]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '1 Barril de cerveza', needs: [[I.BARLEY_GRAIN, 3], [B.PLANK, 3]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '1 Forja', needs: [[B.COBBLE, 8]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '1 Lecho de lana', needs: [[B.WOOL, 3]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '4 Antorchas', needs: [[B.PLANK, 1]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '4 Escaleras de madera', needs: [[B.PLANK, 3]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '4 Escaleras de piedra', needs: [[B.COBBLE, 3]] },
+  { where: 'En la forja', label: '1 Lingote de hierro', needs: [[B.IRONORE, 1]] },
+  { where: 'En la forja', label: '1 Acero de Gondor', needs: [[I.IRON_INGOT, 2]] },
+  { where: 'En la forja', label: '1 Lingote de mithril', needs: [[B.MITHRIL, 1]] },
+  { where: 'En la forja', label: '1 Manzana de oro', needs: [[I.GOLD_NUGGET, 8]] },
+  { where: 'En la forja', label: 'Unas tijeras', needs: [[I.IRON_INGOT, 2]] },
+  { where: 'En la forja', label: 'Herramientas de acero', needs: [[I.STEEL_INGOT, 6]] },
+  { where: 'En la forja', label: 'Armadura de mithril (inmune al fuego)', needs: [[I.MITHRIL_INGOT, 6]] },
+  { where: 'En la forja', label: 'Espada de Gondor', needs: [[I.STEEL_INGOT, 2]] },
+];
+function renderRecipeBook() {
+  const box = $('recipe-list'); box.innerHTML = '';
+  let lastWhere = '';
+  for (const r of RECIPE_BOOK) {
+    if (r.where !== lastWhere) { lastWhere = r.where;
+      const h = document.createElement('div'); h.className = 'flabel'; h.style.marginTop = '8px'; h.textContent = r.where; box.appendChild(h); }
+    const row = document.createElement('div'); row.style.fontSize = '13px'; row.style.lineHeight = '1.5';
+    const ing = r.needs.map(([id, n]) => { const have = (inv[id] || 0) >= n;
+      return '<span style="color:' + (have ? '#8fce6a' : '#d98a8a') + '">' + n + '× ' + NAMES[id] + '</span>'; }).join(' + ');
+    row.innerHTML = ing + ' <span style="color:#9a8a66">→</span> <b style="color:#e8c860">' + r.label + '</b>';
+    box.appendChild(row);
+  }
+}
+function openRecipes() { recipesOpen = true; document.exitPointerLock(); }
+
 function openChest(k) {
   if (!chests.has(k)) { chests.set(k, {}); if (!isGuest) saveDirty = true; }
   openChestKey = k;
@@ -3779,7 +3920,7 @@ function renderChest() {
     mine.appendChild(makeIslot(id, inv[id], ev => {
       const put = ev.shiftKey ? 1 : inv[id];
       removeInv(id, put);
-      c[id] = (c[id] || 0) + put;
+      c[id] = (c[id] || 0) + put; questFlags.chestUsed = true;
       chests.set(openChestKey, c);
       broadcastChest(openChestKey, c);
       renderChest();
@@ -3962,6 +4103,7 @@ $('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.reques
 $('btn-chest-close').onclick = () => { openChestKey = null; if (inWorld) canvas.requestPointerLock(); };
 $('btn-forge-close').onclick = () => { forgeOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-help-close').onclick = () => { helpOpen = false; if (inWorld) canvas.requestPointerLock(); };
+$('btn-recipes-close').onclick = () => { recipesOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('help-send').onclick = () => askHelp($('help-input').value);
 $('help-input').addEventListener('keydown', e => { if (e.key === 'Enter') askHelp($('help-input').value); });
 
@@ -3983,6 +4125,8 @@ function updateHUD(now) {
   coordsEl.textContent = `x ${player.x.toFixed(0)}  y ${player.y.toFixed(0)}  z ${player.z.toFixed(0)}`;
   if (isNight() && !nightWarned) { nightWarned = true; toast('Cae la noche… los enemigos acechan. ¡Empuña tus armas!'); }
   else if (isDayTime() && nightWarned) nightWarned = false;
+  if (player.y < 13 && isSolid(worldGetBlock(Math.floor(player.x), Math.floor(player.y - 1), Math.floor(player.z)))) questFlags.caveExplored = true;
+  updateQuests(now);
 }
 
 /* ============================================================
@@ -3995,13 +4139,14 @@ let heldBtn = null, heldT = 0;
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   digState = null; hideDigbar();
-  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; forgeOpen = false; helpOpen = false; showScreen(null); }
+  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; forgeOpen = false; helpOpen = false; recipesOpen = false; showScreen(null); }
   else if (inWorld) {
     if (openChestKey) showScreen('chest');
     else if (forgeOpen) showScreen('forge');
     else if (invOpen) showScreen('inv');
     else if (mapOpen) showScreen('map');
     else if (helpOpen) showScreen('help');
+    else if (recipesOpen) showScreen('recipes');
     else { showScreen('pause'); saveWorld(); savePlayerStash(); }
   }
   keys.clear(); heldBtn = null;
@@ -4032,6 +4177,10 @@ document.addEventListener('keydown', e => {
   }
   if (e.code === 'KeyF' && locked && player.mount) dismount();
   if (e.code === 'KeyV' && locked) { camMode = (camMode + 1) % 2; toast(camMode ? 'Cámara en 3ª persona' : 'Cámara en 1ª persona'); }
+  if (e.code === 'KeyB' && inWorld) {
+    if (locked) openRecipes();
+    else if (recipesOpen) { recipesOpen = false; canvas.requestPointerLock(); }
+  }
   if (e.code === 'KeyM' && inWorld) {
     if (locked) { mapOpen = true; document.exitPointerLock(); }
     else if (mapOpen) { mapOpen = false; canvas.requestPointerLock(); }
