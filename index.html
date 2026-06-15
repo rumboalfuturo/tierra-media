@@ -54,6 +54,11 @@
     position:fixed; bottom:10px; left:12px; color:rgba(255,255,255,.65);
     font-size:12px; font-family:monospace; text-shadow:0 1px 3px #000; pointer-events:none;
   }
+  #gearinfo {
+    position:fixed; bottom:26px; left:12px; color:#d8c89a; font-size:12px;
+    font-family:monospace; text-shadow:0 1px 3px #000; pointer-events:none; display:none;
+  }
+  body.ingame #gearinfo { display:block; }
   #netinfo {
     position:fixed; top:12px; right:14px; color:#cfe3a8; font-size:14px;
     font-family:monospace; text-shadow:0 1px 4px #000; pointer-events:none;
@@ -168,6 +173,7 @@
 <div id="digbar"><div></div></div>
 <div id="biome"></div>
 <div id="coords"></div>
+<div id="gearinfo"></div>
 <div id="netinfo"></div>
 <canvas id="minimap" width="150" height="150"></canvas>
 <canvas id="healthbar" width="230" height="22"></canvas>
@@ -252,6 +258,18 @@
     </div>
   </div>
 
+  <div class="screen" id="scr-forge">
+    <h2>FORJA · ALTO HORNO</h2>
+    <div class="panel" style="max-width:680px;">
+      <div class="row" style="align-items:flex-start;">
+        <div style="flex:1;"><label class="flabel">Fundir mineral → lingote</label><div id="smeltbox" style="display:flex; flex-direction:column; gap:6px;"></div></div>
+        <div style="flex:1;"><label class="flabel">Forjar herramientas, armas y armaduras</label><div id="forgebox" style="display:flex; flex-direction:column; gap:6px;"></div></div>
+      </div>
+      <div id="gearline" class="hint"></div>
+      <button class="mbtn small" id="btn-forge-close">▶ Volver al juego (E)</button>
+    </div>
+  </div>
+
   <div class="screen" id="scr-map">
     <h2>LA TIERRA MEDIA</h2>
     <div class="panel" style="max-width:620px;">
@@ -313,8 +331,11 @@ const B = {
   DOORX:21, DOORXO:22, DOORZ:23, DOORZO:24,   // puertas: cerrada/abierta × eje
   FARMLAND:25, PIPEWEEDY:26, PIPEWEEDM:27, BARLEYY:28, BARLEYM:29,
   ATHELAS:30, MSPROUT:31, MGLOW:32, BARREL:33,
+  IRONORE:34, GOLDORE:35, SILVERORE:36, BIRONORE:37, FORGE:38, GOLDBLOCK:39,
 };
 const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
+// mineral → lingote al fundir en la forja (B.MITHRIL incluido)
+const SMELT = { [B.IRONORE]:'iron', [B.GOLDORE]:'gold', [B.SILVERORE]:'silver', [B.BIRONORE]:'biron', [B.MITHRIL]:'mithril' };
 // plantas finas (se atraviesan, se rompen de un golpe, se dibujan como aspas)
 const PLANTS = new Set([B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.ATHELAS, B.MSPROUT]);
 const isPlant = id => PLANTS.has(id);
@@ -323,6 +344,8 @@ const isPlant = id => PLANTS.has(id);
 const I = {
   PIPE_LEAF:200, BARLEY_GRAIN:201, PIPE_SEED:202, BARLEY_SEED:203,
   ATHELAS_LEAF:204, MALLORN_NUT:205, PIPE:206, ALE:207,
+  IRON_INGOT:208, GOLD_INGOT:209, GOLD_NUGGET:210, SILVER_INGOT:211,
+  BIRON_INGOT:212, STEEL_INGOT:213, MITHRIL_INGOT:214,
 };
 const isItem = id => id >= 200;
 // objetos que se pueden sembrar (item → bloque de cultivo y dónde)
@@ -344,10 +367,15 @@ const NAMES = {
   [B.FARMLAND]:'Tierra arada', [B.PIPEWEEDY]:'Galenas (brote)', [B.PIPEWEEDM]:'Galenas',
   [B.BARLEYY]:'Cebada (brote)', [B.BARLEYM]:'Cebada', [B.ATHELAS]:'Athelas',
   [B.MSPROUT]:'Brote de mallorn', [B.MGLOW]:'Hojas de mallorn doradas', [B.BARREL]:'Barril de cerveza',
+  [B.IRONORE]:'Mineral de hierro', [B.GOLDORE]:'Mineral de oro', [B.SILVERORE]:'Mineral de plata',
+  [B.BIRONORE]:'Mineral de hierro negro', [B.FORGE]:'Forja (alto horno)', [B.GOLDBLOCK]:'Bloque de oro',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
   [I.PIPE]:'Pipa', [I.ALE]:'Jarra de cerveza',
+  [I.IRON_INGOT]:'Lingote de hierro', [I.GOLD_INGOT]:'Lingote de oro', [I.GOLD_NUGGET]:'Pepita de oro',
+  [I.SILVER_INGOT]:'Lingote de plata élfica', [I.BIRON_INGOT]:'Lingote de hierro negro',
+  [I.STEEL_INGOT]:'Acero de Gondor', [I.MITHRIL_INGOT]:'Lingote de mithril',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -361,7 +389,8 @@ const TOOLS = [
 const NMAT = 4;
 // materiales que se pueden tener en el inventario
 const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
-                   B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
+                   B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.IRONORE, B.GOLDORE, B.SILVERORE, B.BIRONORE,
+                   B.GOLDBLOCK, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
                 [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
@@ -369,6 +398,19 @@ const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
 const FLAMMABLE = new Set([B.GRASS, B.LEAVES, B.MLEAVES, B.LOG, B.MLOG, B.PLANK, B.CHEST,
                            B.DOORX, B.DOORXO, B.DOORZ, B.DOORZO,
                            B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.MSPROUT, B.BARREL]);
+
+// metalurgia: niveles de herramienta, armadura y arma
+const TIER_FACTOR = { base:1, iron:0.7, steel:0.5, mithril:0.35 };       // multiplica los golpes necesarios
+const ARMOR = {
+  none:      { red:0,    slow:0,     fireproof:false },
+  iron:      { red:0.25, slow:0,     fireproof:false },
+  steel:     { red:0.45, slow:0,     fireproof:false },
+  blackiron: { red:0.65, slow:0.18,  fireproof:false },   // máxima protección, pero pesa
+  mithril:   { red:0.55, slow:-0.12, fireproof:true  },   // ligera como pluma, inmune al fuego
+};
+const NAME_TIER   = { base:'piedra', none:'—', iron:'hierro', steel:'acero', silver:'plata', blackiron:'hierro negro', mithril:'mithril' };
+const WEAPON_DMG  = { none:1, iron:3, steel:5, silver:4, blackiron:6, mithril:7 };
+const WEAPON_NAME = { none:'puños', iron:'espada de hierro', steel:'espada de Gondor', silver:'daga élfica', blackiron:'cimitarra negra', mithril:'espada de mithril' };
 
 const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3 };
 const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor'];
@@ -708,7 +750,7 @@ function genChunk(cx, cz) {
         else if (ih >= 34 && y >= ih - 2) id = B.SNOW;
         else id = ih >= 27 ? B.STONE : B.DIRT;
       } else {
-        id = (y < 24 && hash3(wx, y, wz, SEED + 7) < 0.012) ? B.MITHRIL : B.STONE;
+        id = oreAt(wx, y, wz, biome);
       }
       data[IDX(lx, y, lz)] = id;
     }
@@ -734,6 +776,16 @@ function genChunk(cx, cz) {
   dirty.add(K(cx, cz));
   markDirty(cx - 1, cz); markDirty(cx + 1, cz); markDirty(cx, cz - 1); markDirty(cx, cz + 1);
   return ch;
+}
+
+/* ----- vetas de mineral bajo tierra ----- */
+function oreAt(wx, y, wz, biome) {
+  if (y < 24 && hash3(wx, y, wz, SEED + 7) < 0.012) return B.MITHRIL;
+  if ((biome === BIOME.MORDOR || y <= 15) && hash3(wx, y, wz, SEED + 41) < 0.02) return B.BIRONORE;   // hierro negro
+  if (y < 30 && hash3(wx, y, wz, SEED + 42) < 0.006) return B.GOLDORE;
+  if ((biome === BIOME.SHIRE || biome === BIOME.LOTHLORIEN) && y >= 6 && y <= 30 && hash3(wx, y, wz, SEED + 43) < 0.008) return B.SILVERORE;
+  if (y >= 5 && hash3(wx, y, wz, SEED + 44) < 0.02) return B.IRONORE;
+  return B.STONE;
 }
 
 /* ----- flora silvestre: athelas (Lothlórien) y galenas (La Comarca) ----- */
@@ -1198,6 +1250,44 @@ const TILE_PAINTERS = [
     actx.beginPath(); actx.arc(ox + 8, oy + 8, 6, 0, 7); actx.stroke();
     actx.fillRect(ox + 7, oy + 7, 2, 2);                     // tapón
   },
+  /* 34 iron_ore */ (ox, oy, rng) => {
+    speckle(ox, oy, [127, 131, 134], 0.09, rng);
+    for (let i = 0; i < 6; i++) { const x = 1 + ((rng() * 13) | 0), y = 1 + ((rng() * 13) | 0);
+      actx.fillStyle = css(206, 170, 132); actx.fillRect(ox + x, oy + y, 2, 2); }
+  },
+  /* 35 gold_ore */ (ox, oy, rng) => {
+    speckle(ox, oy, [127, 131, 134], 0.09, rng);
+    for (let i = 0; i < 6; i++) { const x = 1 + ((rng() * 13) | 0), y = 1 + ((rng() * 13) | 0);
+      actx.fillStyle = css(240, 200, 70); actx.fillRect(ox + x, oy + y, 2, 2); }
+  },
+  /* 36 silver_ore */ (ox, oy, rng) => {
+    speckle(ox, oy, [127, 131, 134], 0.09, rng);
+    for (let i = 0; i < 6; i++) { const x = 1 + ((rng() * 13) | 0), y = 1 + ((rng() * 13) | 0);
+      actx.fillStyle = css(224, 232, 238); actx.fillRect(ox + x, oy + y, 2, 2); }
+  },
+  /* 37 blackiron_ore */ (ox, oy, rng) => {
+    speckle(ox, oy, [58, 52, 60], 0.18, rng);
+    for (let i = 0; i < 6; i++) { const x = 1 + ((rng() * 13) | 0), y = 1 + ((rng() * 13) | 0);
+      actx.fillStyle = css(120, 40, 44); actx.fillRect(ox + x, oy + y, 2, 2); }
+  },
+  /* 38 forge_front */ (ox, oy, rng) => {
+    for (let by = 0; by < 4; by++) for (let bx = 0; bx < 4; bx++) {       // piedra labrada
+      const f = 0.8 + rng() * 0.4; actx.fillStyle = css(86 * f, 88 * f, 92 * f);
+      actx.fillRect(ox + bx * 4 + ((bx + by) % 2), oy + by * 4, 3, 3); }
+    actx.fillStyle = css(20, 14, 12); actx.fillRect(ox + 4, oy + 7, 8, 6);    // boca del horno
+    actx.fillStyle = css(250, 150, 40); actx.fillRect(ox + 5, oy + 9, 6, 3);  // brasas
+    actx.fillStyle = css(255, 220, 120); actx.fillRect(ox + 6, oy + 10, 4, 1);
+  },
+  /* 39 forge_top */ (ox, oy, rng) => {
+    speckle(ox, oy, [90, 92, 96], 0.1, rng);
+    actx.fillStyle = css(20, 14, 12); actx.beginPath(); actx.arc(ox + 8, oy + 8, 4, 0, 7); actx.fill();
+    actx.fillStyle = css(250, 160, 50); actx.beginPath(); actx.arc(ox + 8, oy + 8, 2, 0, 7); actx.fill();
+  },
+  /* 40 gold_block */ (ox, oy, rng) => {
+    speckle(ox, oy, [232, 196, 76], 0.06, rng);
+    actx.fillStyle = 'rgba(255,240,170,.6)'; actx.fillRect(ox + 2, oy + 2, 5, 2);
+    actx.fillStyle = 'rgba(150,110,30,.5)'; actx.fillRect(ox + 9, oy + 11, 5, 2);
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1237,6 +1327,12 @@ const TILE_MAP = {
   [B.MSPROUT]: { all: 30 },
   [B.MGLOW]:   { all: 31 },
   [B.BARREL]:  { top: 33, bottom: 33, side: 32 },
+  [B.IRONORE]: { all: 34 },
+  [B.GOLDORE]: { all: 35 },
+  [B.SILVERORE]:{ all: 36 },
+  [B.BIRONORE]:{ all: 37 },
+  [B.FORGE]:   { top: 39, bottom: 39, side: 38 },
+  [B.GOLDBLOCK]:{ all: 40 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1522,6 +1618,7 @@ function physics(dt) {
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
   let speed = inFluid ? 2.8 : sprint ? 7.0 : 4.3;
   if (strengthTimer > 0) speed *= 1.18;
+  speed *= 1 - ARMOR[armorTier].slow;        // el hierro negro pesa; el mithril aligera
 
   let f = 0, r = 0;
   if (keys.has('KeyW')) f++; if (keys.has('KeyS')) f--;
@@ -1747,7 +1844,11 @@ function swing(now) {
   if (hit.id === B.BEDROCK) { digState = null; hideDigbar(); return; }
   const key = hit.x + ',' + hit.y + ',' + hit.z;
   if (!digState || digState.key !== key) {
-    let need = hitsFor(hit.id, currentTool());
+    const tool = currentTool();
+    const withTool = hitsFor(hit.id, tool);
+    let need = withTool;
+    if (withTool < hitsFor(hit.id, '_'))                 // herramienta adecuada → mejora por nivel de metal
+      need = Math.max(1, Math.round(withTool * TIER_FACTOR[toolTier[tool] || 'base']));
     if (strengthTimer > 0) need = Math.max(1, Math.ceil(need / 2));   // la cerveza da fuerza
     digState = { key, hits: 0, need };
   }
@@ -1788,6 +1889,7 @@ function tryPlace(initial) {
   if (!hit) return;
   if (isDoorId(hit.id)) { if (initial) toggleDoor(hit.x, hit.y, hit.z); return; }
   if (hit.id === B.CHEST) { if (initial) openChest(hit.x + ',' + hit.y + ',' + hit.z); return; }
+  if (hit.id === B.FORGE) { if (initial) openForge(); return; }
   if (hit.id === B.BARREL) { if (initial) drinkBarrel(hit.x + ',' + hit.y + ',' + hit.z); return; }
 
   // la pala labra la tierra en tierra arada
@@ -1933,6 +2035,10 @@ function clearParticles() { while (particles.length) { const p = particles.pop()
 const HMAX = 20;
 let health = HMAX, lastDamage = -9999;
 let fireTimer = 0, poisonTimer = 0, strengthTimer = 0, regenBuffTimer = 0, pipeSmoke = 0;
+// metalurgia equipada (por jugador, local)
+let toolTier = { pick: 'base', shovel: 'base', axe: 'base' };
+let armorTier = 'none', weaponTier = 'none';
+const weaponDamage = () => WEAPON_DMG[weaponTier];   // listo para la fase de enemigos
 let submerged = 0, peakY = 0, wasAir = false;
 let _regenAcc = 0, _fireAcc = 0, _poisonAcc = 0, _drownAcc = 0, _smokeAcc = 0;
 
@@ -1963,6 +2069,11 @@ function renderHealth() {
 function flashHurt() { const e = $('fx-hurt'); e.style.opacity = 0.9; setTimeout(() => e.style.opacity = 0, 120); }
 function damage(amt, cause) {
   if (health <= 0 || !inWorld) return;
+  const a = ARMOR[armorTier];
+  if (a.fireproof && (cause === 'lava' || cause === 'fire')) return;        // mithril: inmune al fuego y la lava
+  if (cause === 'lava' || cause === 'fire' || cause === 'fall' || cause === 'mob')
+    amt = Math.max(0, Math.round(amt * (1 - a.red)));                       // la armadura amortigua los golpes físicos
+  if (amt <= 0) return;
   health = Math.max(0, health - amt);
   lastDamage = nowMs();
   flashHurt(); renderHealth();
@@ -2011,8 +2122,10 @@ function updateStatus(dt) {
       camera.getWorldDirection(_dir);
       spawnPuffs(camera.position.x + _dir.x * 0.5, camera.position.y - 0.25, camera.position.z + _dir.z * 0.5, '#cfcfcf', 1); } }
 
+  const fireproof = ARMOR[armorTier].fireproof;
+  if (fireproof) fireTimer = 0;
   $('fx-poison').style.opacity = poisonTimer > 0 ? 0.9 : 0;
-  $('fx-fire').style.opacity = (inLava || fireTimer > 0) ? 0.85 : 0;
+  $('fx-fire').style.opacity = (!fireproof && (inLava || fireTimer > 0)) ? 0.85 : 0;
   const buffs = [];
   if (strengthTimer > 0) buffs.push('💪 Fuerza ' + Math.ceil(strengthTimer) + 's');
   if (regenBuffTimer > 0) buffs.push('🌿 Sosiego ' + Math.ceil(regenBuffTimer) + 's');
@@ -2244,6 +2357,7 @@ function saveWorld() {
     inv, hotbarMats,
     chests: Object.fromEntries(chests),
     crops: cropList,
+    gear: { tool: toolTier, armor: armorTier, weapon: weaponTier },
   });
   currentWorld.last = Date.now();
   const i = worlds.findIndex(w => w.id === currentWorld.id);
@@ -2254,7 +2368,7 @@ function saveWorld() {
 
 // el invitado guarda su inventario en su navegador, ligado a la semilla del mundo del anfitrión
 function savePlayerStash() {
-  if (isGuest && inWorld) lsSet('tm_ginv_' + SEED, { inv, hotbarMats });
+  if (isGuest && inWorld) lsSet('tm_ginv_' + SEED, { inv, hotbarMats, gear: { tool: toolTier, armor: armorTier, weapon: weaponTier } });
 }
 setInterval(() => { if (inWorld && saveDirty) { saveWorld(); savePlayerStash(); saveDirty = false; } }, 8000);
 window.addEventListener('beforeunload', () => { if (inWorld) { saveWorld(); savePlayerStash(); } });
@@ -2296,6 +2410,16 @@ function startWorld(meta, data, mode) {
   fireTimer = poisonTimer = strengthTimer = regenBuffTimer = pipeSmoke = submerged = 0;
   renderHealth();
 
+  // equipo de metalurgia
+  const gear = stash?.gear;
+  toolTier = (gear && typeof gear.tool === 'object')
+    ? { pick: gear.tool.pick || 'base', shovel: gear.tool.shovel || 'base', axe: gear.tool.axe || 'base' }
+    : { pick: 'base', shovel: 'base', axe: 'base' };
+  armorTier = ARMOR[gear?.armor] ? gear.armor : 'none';
+  weaponTier = (gear && WEAPON_DMG[gear.weapon] !== undefined) ? gear.weapon : 'none';
+  forgeOpen = false;
+  updateGearHUD();
+
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) genChunk(dx, dz);
 
   const p = data?.player;
@@ -2329,13 +2453,14 @@ let menuScreen = 'main', worldsMode = 'sp';
 function showScreen(s) {
   menuScreen = s;
   $('menu').style.display = s ? 'flex' : 'none';
-  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map'])
+  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map', 'scr-forge'])
     $(id).style.display = (id === 'scr-' + s) ? 'flex' : 'none';
   if (s === 'pause') refreshPause();
   if (s === 'worlds') renderWorldList();
   if (s === 'inv') renderInv();
   if (s === 'chest') renderChest();
   if (s === 'map') renderMap();
+  if (s === 'forge') renderForge();
 }
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -2510,6 +2635,16 @@ function drawItemIcon(g, id) {
     g.fillStyle = '#f4ead0'; g.fillRect(9, 9, 12, 4);                  // espuma
     g.strokeStyle = '#9a7a30'; g.lineWidth = 2; g.strokeRect(9, 12, 12, 15);
     g.strokeStyle = '#caa040'; g.beginPath(); g.arc(23, 18, 4, -1.4, 1.4); g.stroke();   // asa
+  } else if (id === I.GOLD_NUGGET) {
+    g.fillStyle = '#f0d24a';
+    for (const [x, y] of [[10, 12], [17, 10], [13, 17], [20, 16], [8, 19]]) { g.beginPath(); g.arc(x, y, 2.4, 0, 7); g.fill(); }
+  } else if (id >= I.IRON_INGOT && id <= I.MITHRIL_INGOT) {            // lingotes
+    const col = { [I.IRON_INGOT]: '#c9c9cf', [I.GOLD_INGOT]: '#f0cf52', [I.SILVER_INGOT]: '#dfe9f0',
+                  [I.BIRON_INGOT]: '#7a3a44', [I.STEEL_INGOT]: '#9fb0c4', [I.MITHRIL_INGOT]: '#9fe8e6' }[id] || '#bbb';
+    g.fillStyle = col;
+    g.beginPath(); g.moveTo(7, 22); g.lineTo(25, 22); g.lineTo(22, 12); g.lineTo(10, 12); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(11, 13, 9, 2);
+    g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = 1; g.stroke();
   }
 }
 function drawMatIcon(g, id) {
@@ -2618,8 +2753,8 @@ function renderInv() {
   ];
   const useable = new Map(consumables.map(c => [c.id, c]));
   let anyObj = false;
-  for (const id of [I.PIPE_LEAF, I.BARLEY_GRAIN, I.ATHELAS_LEAF, I.MALLORN_NUT, I.PIPE, I.ALE]) {
-    if (!(inv[id] > 0)) continue;
+  const objIds = Object.keys(inv).map(Number).filter(id => isItem(id) && !beltable(id) && inv[id] > 0).sort((a, b) => a - b);
+  for (const id of objIds) {
     anyObj = true;
     const row = document.createElement('div'); row.className = 'craftrow';
     const ic = makeIslot(id, inv[id], null); ic.style.cursor = 'default';
@@ -2708,6 +2843,60 @@ function renderChest() {
     }));
   }
   if (!anyMine) mine.innerHTML = '<div class="empty">Nada que guardar</div>';
+}
+
+/* ----- la forja (alto horno): fundir minerales y forjar equipo ----- */
+let forgeOpen = false;
+function openForge() { forgeOpen = true; document.exitPointerLock(); }
+function gearText() { return '⚒ herramientas: ' + NAME_TIER[toolTier.pick] + '  ·  🛡 armadura: ' + NAME_TIER[armorTier] + '  ·  ⚔ arma: ' + WEAPON_NAME[weaponTier]; }
+function updateGearHUD() {
+  const g = (toolTier.pick !== 'base' ? '⚒' + NAME_TIER[toolTier.pick] + ' ' : '')
+          + (armorTier !== 'none' ? '🛡' + NAME_TIER[armorTier] + ' ' : '')
+          + (weaponTier !== 'none' ? '⚔' + NAME_TIER[weaponTier] : '');
+  $('gearinfo').textContent = g;
+}
+function setTools(t)  { toolTier.pick = toolTier.shovel = toolTier.axe = t; saveDirty = true; toast('Forjas herramientas de ' + NAME_TIER[t]); updateGearHUD(); }
+function setArmor(t)  { armorTier = t; saveDirty = true; toast('Te ciñes una armadura de ' + NAME_TIER[t]); updateGearHUD(); }
+function setWeapon(t) { weaponTier = t; saveDirty = true; toast('Empuñas una ' + WEAPON_NAME[t]); updateGearHUD(); }
+function addRecipe(box, r) {
+  const can = r.need.every(([id, n]) => (inv[id] || 0) >= n);
+  const row = document.createElement('div'); row.className = 'craftrow';
+  const btn = document.createElement('button'); btn.className = 'mbtn small'; btn.textContent = 'Hacer';
+  btn.disabled = !can; btn.style.opacity = can ? 1 : 0.4;
+  btn.onclick = () => { if (!r.need.every(([id, n]) => (inv[id] || 0) >= n)) return;
+    for (const [id, n] of r.need) removeInv(id, n); r.out(); renderForge(); };
+  const lbl = document.createElement('span'); lbl.style.flex = '1'; lbl.textContent = r.label;
+  row.append(btn, lbl); box.append(row);
+}
+function renderForge() {
+  const sb = $('smeltbox'); sb.innerHTML = '';
+  [
+    { label: '1 mineral de hierro → lingote',      need: [[B.IRONORE, 1]],   out: () => addInv(I.IRON_INGOT, 1) },
+    { label: '1 mineral de oro → lingote',         need: [[B.GOLDORE, 1]],   out: () => addInv(I.GOLD_INGOT, 1) },
+    { label: '1 mineral de plata → lingote',       need: [[B.SILVERORE, 1]], out: () => addInv(I.SILVER_INGOT, 1) },
+    { label: '1 mineral de hierro negro → lingote',need: [[B.BIRONORE, 1]],  out: () => addInv(I.BIRON_INGOT, 1) },
+    { label: '1 mithril → lingote de mithril',     need: [[B.MITHRIL, 1]],   out: () => addInv(I.MITHRIL_INGOT, 1) },
+    { label: '2 lingotes de hierro → acero de Gondor', need: [[I.IRON_INGOT, 2]], out: () => addInv(I.STEEL_INGOT, 1) },
+    { label: '1 lingote de oro → 9 pepitas',       need: [[I.GOLD_INGOT, 1]], out: () => addInv(I.GOLD_NUGGET, 9) },
+    { label: '1 lingote de oro → bloque de oro',   need: [[I.GOLD_INGOT, 1]], out: () => addInv(B.GOLDBLOCK, 1) },
+  ].forEach(r => addRecipe(sb, r));
+
+  const fb = $('forgebox'); fb.innerHTML = '';
+  [
+    { label: 'Herramientas de hierro (5 hierro)',  need: [[I.IRON_INGOT, 5]],   out: () => setTools('iron') },
+    { label: 'Herramientas de acero (6 acero)',    need: [[I.STEEL_INGOT, 6]],  out: () => setTools('steel') },
+    { label: 'Herramientas de mithril (6 mithril)',need: [[I.MITHRIL_INGOT, 6]],out: () => setTools('mithril') },
+    { label: 'Armadura de hierro (6 hierro)',      need: [[I.IRON_INGOT, 6]],   out: () => setArmor('iron') },
+    { label: 'Armadura de acero (6 acero)',        need: [[I.STEEL_INGOT, 6]],  out: () => setArmor('steel') },
+    { label: 'Armadura de hierro negro (6) — recia',need: [[I.BIRON_INGOT, 6]], out: () => setArmor('blackiron') },
+    { label: 'Armadura de mithril (6) — inmune al fuego', need: [[I.MITHRIL_INGOT, 6]], out: () => setArmor('mithril') },
+    { label: 'Espada de hierro (2 hierro)',        need: [[I.IRON_INGOT, 2]],   out: () => setWeapon('iron') },
+    { label: 'Espada de Gondor (2 acero)',         need: [[I.STEEL_INGOT, 2]],  out: () => setWeapon('steel') },
+    { label: 'Daga élfica (2 plata)',              need: [[I.SILVER_INGOT, 2]], out: () => setWeapon('silver') },
+    { label: 'Cimitarra negra (3 hierro negro)',   need: [[I.BIRON_INGOT, 3]],  out: () => setWeapon('blackiron') },
+    { label: 'Espada de mithril (2 mithril)',      need: [[I.MITHRIL_INGOT, 2]],out: () => setWeapon('mithril') },
+  ].forEach(r => addRecipe(fb, r));
+  $('gearline').textContent = gearText();
 }
 
 /* ----- el mapa de la Tierra Media (tecla M) ----- */
@@ -2813,6 +3002,7 @@ function renderMinimap() {
 $('btn-clearslot').onclick = () => { hotbarMats[invSelSlot] = null; saveDirty = true; refreshHotbar(); renderInv(); };
 $('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-chest-close').onclick = () => { openChestKey = null; if (inWorld) canvas.requestPointerLock(); };
+$('btn-forge-close').onclick = () => { forgeOpen = false; if (inWorld) canvas.requestPointerLock(); };
 
 function updateNetInfo() {
   const el = $('netinfo');
@@ -2842,9 +3032,10 @@ let heldBtn = null, heldT = 0;
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   digState = null; hideDigbar();
-  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; showScreen(null); }
+  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; forgeOpen = false; showScreen(null); }
   else if (inWorld) {
     if (openChestKey) showScreen('chest');
+    else if (forgeOpen) showScreen('forge');
     else if (invOpen) showScreen('inv');
     else if (mapOpen) showScreen('map');
     else { showScreen('pause'); saveWorld(); savePlayerStash(); }
@@ -2865,6 +3056,7 @@ document.addEventListener('keydown', e => {
     if (locked) { invOpen = true; document.exitPointerLock(); }
     else if (invOpen) { invOpen = false; canvas.requestPointerLock(); }
     else if (openChestKey) { openChestKey = null; canvas.requestPointerLock(); }
+    else if (forgeOpen) { forgeOpen = false; canvas.requestPointerLock(); }
   }
   if (e.code === 'KeyM' && inWorld) {
     if (locked) { mapOpen = true; document.exitPointerLock(); }
@@ -2995,9 +3187,14 @@ window.G = {
   reacts: () => reactQueue.length,
   // vida y agricultura (para pruebas)
   hp: () => health, hurt: a => damage(a, 'test'), heal, poison, die,
+  dmg(a, cause) { const b = health; damage(a, cause); const taken = b - health; health = b; renderHealth(); return taken; },
   status: () => ({ health, fireTimer, poisonTimer, strengthTimer, regenBuffTimer, crops: crops.size }),
   consumeAthelas, smokePipe, drinkAle,
   crops, growAll() { for (const c of crops.values()) c.t -= 999999; growCrops(nowMs()); },
+  // metalurgia (para pruebas)
+  gear: () => ({ tool: { ...toolTier }, armor: armorTier, weapon: weaponTier }),
+  setTools, setArmor, setWeapon, openForge, renderForge,
+  findOre(id) { for (const ch of chunks.values()) for (let i = 0; i < ch.data.length; i++) if (ch.data[i] === id) { const lx = i % 16, lz = ((i / 16) | 0) % 16, ly = (i / 256) | 0; return { x: ch.cx * 16 + lx, y: ly, z: ch.cz * 16 + lz }; } return null; },
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
 };
 </script>

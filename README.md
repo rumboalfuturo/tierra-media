@@ -58,6 +58,18 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 - **Mallorn dorado**: planta una nuez de mallorn y crecerá un árbol de madera blanca y **hojas de oro que iluminan la zona de noche**.
 - Tu inventario (tecla **E**) tiene ahora una sección de **Objetos** (cosecha y comida) con botones para usarlos.
 
+## ⛏️ Minerales y metalurgia
+
+Excavando bajo tierra encuentras **vetas de mineral**: hierro (común), oro, **plata élfica** (bajo los bosques), **hierro negro** (cerca de la lava y en Mordor) y **mithril** (en lo más profundo).
+
+- **Forja (alto horno)**: fabrica una y colócala; clic derecho para abrirla.
+  - **Fundir**: mineral → lingote; 2 lingotes de hierro → **acero de Gondor**; oro → pepitas o bloque de oro.
+  - **Forjar**:
+    - **Herramientas** (hierro/acero/mithril): picas, cavas y talas mucho más rápido.
+    - **Armaduras** (hierro/acero/hierro negro/mithril): reducen el daño que recibes. El **hierro negro** es el más recio pero pesa; el **mithril** es ligero (corres más) y **te hace inmune al fuego y la lava**.
+    - **Armas** (espada de hierro, espada de Gondor, daga élfica, cimitarra negra, espada de mithril): listas para los enemigos que llegarán.
+- Abajo a la izquierda se ve tu equipo actual (⚒ herramientas · 🛡 armadura · ⚔ arma).
+
 ## El mapa de la Tierra Media
 
 Pulsa **M** para ver el mapa con tu posición. Los lugares famosos están construidos en el mundo, dispuestos como en el mapa real (el este queda a +x y el sur a +z):
