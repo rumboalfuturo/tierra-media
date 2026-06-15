@@ -324,6 +324,8 @@ const ISEN  = { x: 105, z: 140 };          // Isengard / Orthanc
 const HELM  = { x: 30,  z: 190 };          // Abismo de Helm
 const MTIR  = { x: 230, z: 230 };          // Minas Tirith
 const TOWER = { x: 330, z: 290 };          // Mordor / Barad-dûr
+const MARSH = { x: 200, z: 165, r: 30 };   // Ciénagas de los Muertos
+const ARG   = { z: 145, x: 278, gap: 9 };  // los Argonath, flanqueando el Anduin
 
 const B = {
   AIR:0, GRASS:1, DIRT:2, STONE:3, SNOW:4, LOG:5, LEAVES:6,
@@ -334,6 +336,7 @@ const B = {
   FARMLAND:25, PIPEWEEDY:26, PIPEWEEDM:27, BARLEYY:28, BARLEYM:29,
   ATHELAS:30, MSPROUT:31, MGLOW:32, BARREL:33,
   IRONORE:34, GOLDORE:35, SILVERORE:36, BIRONORE:37, FORGE:38, GOLDBLOCK:39,
+  MOSSYSTONE:40, BASALT:41, ASH:42, MUD:43, SOULFIRE:44,
 };
 const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
 // mineral → lingote al fundir en la forja (B.MITHRIL incluido)
@@ -372,6 +375,7 @@ const NAMES = {
   [B.MSPROUT]:'Brote de mallorn', [B.MGLOW]:'Hojas de mallorn doradas', [B.BARREL]:'Barril de cerveza',
   [B.IRONORE]:'Mineral de hierro', [B.GOLDORE]:'Mineral de oro', [B.SILVERORE]:'Mineral de plata',
   [B.BIRONORE]:'Mineral de hierro negro', [B.FORGE]:'Forja (alto horno)', [B.GOLDBLOCK]:'Bloque de oro',
+  [B.MOSSYSTONE]:'Piedra musgosa', [B.BASALT]:'Basalto', [B.ASH]:'Ceniza', [B.MUD]:'Lodo', [B.SOULFIRE]:'Fuego de almas',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
@@ -396,7 +400,7 @@ const NMAT = 4;
 // materiales que se pueden tener en el inventario
 const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
                    B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.IRONORE, B.GOLDORE, B.SILVERORE, B.BIRONORE,
-                   B.GOLDBLOCK, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
+                   B.GOLDBLOCK, B.MOSSYSTONE, B.BASALT, B.ASH, B.MUD, B.SOULFIRE, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
                 [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
@@ -420,12 +424,12 @@ const WEAPON_NAME = { none:'puños', iron:'espada de hierro', steel:'espada de G
 // la daga élfica (plata) y la hoja de Morgul golpean más fuerte a ciertos enemigos
 const WEAPON_BONUS = { silver:{ spider:2, orc:1, uruk:1 }, morgul:{ orc:2, uruk:2, nazgul:2, spider:2 } };
 
-const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3 };
-const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor'];
+const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3, MARSH:4 };
+const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor', 'Ciénagas de los Muertos'];
 
 const isFluid  = id => id === B.WATER || id === B.LAVA;
-const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.DOORXO && id !== B.DOORZO && !isPlant(id);
-const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || isDoorId(id) || isPlant(id);
+const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.SOULFIRE && id !== B.DOORXO && id !== B.DOORZO && !isPlant(id);
+const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || id === B.SOULFIRE || isDoorId(id) || isPlant(id);
 
 /* ============================================================
    RUIDO (value noise + fBm, determinista)
@@ -470,6 +474,7 @@ const ridgeAt = (wx, wz) =>
 
 function biomeAt(wx, wz) {
   if (Math.hypot(wx - TOWER.x, wz - TOWER.z) < 60) return BIOME.MORDOR;
+  if (Math.hypot(wx - MARSH.x, wz - MARSH.z) < MARSH.r) return BIOME.MARSH;
   if (Math.hypot(wx - SPAWN.x, wz - SPAWN.z) < 35) return BIOME.SHIRE;
   if (Math.hypot(wx - MTIR.x, wz - MTIR.z) < 50)   return BIOME.SHIRE;   // los campos del Pelennor
   if (Math.hypot(wx - ISEN.x, wz - ISEN.z) < 34)   return BIOME.SHIRE;
@@ -520,6 +525,9 @@ function heightAt(wx, wz) {
     const riv = Math.abs(wx - (252 + 26 * Math.sin(wz * 0.012)));
     if (riv < 5) h = Math.min(h, riv > 3.5 ? 15 : 13);
   }
+  // las Ciénagas de los Muertos: tierra hundida y encharcada
+  const dMarsh = Math.hypot(wx - MARSH.x, wz - MARSH.z);
+  if (dMarsh < MARSH.r) h = lerp(WATER_Y - 1 + fbm(wx * 0.08, wz * 0.08, SEED + 6, 2) * 1.5, h, smoothstep(MARSH.r - 14, MARSH.r, dMarsh));
   return Math.max(2, Math.min(WH - 10, Math.floor(h)));
 }
 
@@ -749,13 +757,15 @@ function genChunk(cx, cz) {
       let id;
       if (y === 0) id = B.BEDROCK;
       else if (y === ih) {
-        if (biome === BIOME.MORDOR) id = B.MROCK;
+        if (biome === BIOME.MARSH) id = B.MUD;
+        else if (biome === BIOME.MORDOR) id = hash3(wx, 1, wz, SEED + 58) < 0.3 ? B.ASH : B.MROCK;
         else if (ih >= 34) id = B.SNOW;
         else if (ih >= 27) id = B.STONE;
         else if (ih <= WATER_Y + 1) id = B.SAND;
         else id = B.GRASS;
       } else if (y >= ih - 3) {
-        if (biome === BIOME.MORDOR) id = B.MROCK;
+        if (biome === BIOME.MARSH) id = B.MUD;
+        else if (biome === BIOME.MORDOR) id = B.MROCK;
         else if (ih >= 34 && y >= ih - 2) id = B.SNOW;
         else id = ih >= 27 ? B.STONE : B.DIRT;
       } else {
@@ -772,6 +782,8 @@ function genChunk(cx, cz) {
   genTrees(data, cx, cz);
   genStructures(data, cx, cz);
   genFlora(data, cx, cz);
+  genRuins(data, cx, cz);
+  genArgonath(data, cx, cz);
 
   // aplicar ediciones guardadas / recibidas
   const em = editsByChunk.get(K(cx, cz));
@@ -803,6 +815,19 @@ function genFlora(data, cx, cz) {
   for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
     const wx = baseX + lx, wz = baseZ + lz;
     const biome = biomeAt(wx, wz);
+    if (biome === BIOME.MORDOR) {                          // espiras de basalto y respiraderos
+      const ih = heightAt(wx, wz);
+      if (ih > WATER_Y && hash2(wx, wz, SEED + 59) < 0.006) {
+        const sh = 3 + Math.floor(hash2(wz, wx, SEED + 60) * 7);
+        for (let y = 1; y <= sh; y++) { const yy = ih + y; if (yy < WH) data[IDX(lx, yy, lz)] = B.BASALT; }
+      }
+      continue;
+    }
+    if (biome === BIOME.MARSH) {                            // fuegos de almas flotando sobre el agua
+      if (data[IDX(lx, WATER_Y, lz)] === B.WATER && data[IDX(lx, WATER_Y + 1, lz)] === B.AIR && hash2(wx, wz, SEED + 61) < 0.02)
+        data[IDX(lx, WATER_Y + 1, lz)] = B.SOULFIRE;
+      continue;
+    }
     if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
     const ih = heightAt(wx, wz);
     if (ih <= WATER_Y + 1 || ih >= 27) continue;
@@ -811,6 +836,69 @@ function genFlora(data, cx, cz) {
     const r = hash2(wx, wz, SEED + 31);
     if (biome === BIOME.LOTHLORIEN) { if (r < 0.006) data[IDX(lx, ih + 1, lz)] = B.ATHELAS; }   // athelas, muy rara
     else if (r < 0.004) data[IDX(lx, ih + 1, lz)] = B.PIPEWEEDM;                                  // galenas silvestres
+  }
+}
+
+/* ----- ruinas de Arnor/Gondor con cripta y tesoro ----- */
+function genRuins(data, cx, cz) {
+  const baseX = cx * CH, baseZ = cz * CH;
+  const set = (lx, y, lz, id) => { if (lx >= 0 && lx < CH && lz >= 0 && lz < CH && y >= 0 && y < WH) data[IDX(lx, y, lz)] = id; };
+  for (let agx = Math.floor((baseX - 8) / 64); agx <= Math.floor((baseX + CH + 8) / 64); agx++)
+    for (let agz = Math.floor((baseZ - 8) / 64); agz <= Math.floor((baseZ + CH + 8) / 64); agz++) {
+      if (hash2(agx, agz, SEED + 51) > 0.18) continue;                       // ~18% de celdas con ruina
+      const ax = agx * 64 + 14 + Math.floor(hash2(agx, agz, SEED + 52) * 36);
+      const az = agz * 64 + 14 + Math.floor(hash2(agz, agx, SEED + 53) * 36);
+      const biome = biomeAt(ax, az);
+      if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
+      if (Math.hypot(ax - SPAWN.x, az - SPAWN.z) < 30) continue;
+      const gh = heightAt(ax, az);
+      if (gh <= WATER_Y + 1 || gh >= 27) continue;
+      const W = B.MOSSYSTONE;
+      for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
+        const wx = ax + dx, wz = az + dz, lx = wx - baseX, lz = wz - baseZ;
+        if (lx < 0 || lx >= CH || lz < 0 || lz >= CH) continue;
+        set(lx, gh, lz, W);                                                  // suelo de losas
+        if (Math.abs(dx) === 4 || Math.abs(dz) === 4) {                      // muros derruidos
+          const wh = 1 + Math.floor(hash3(wx, 0, wz, SEED + 54) * 4);
+          for (let y = 1; y <= wh; y++) if (hash3(wx, y, wz, SEED + 55) < 0.82) set(lx, gh + y, lz, W);
+        }
+        if (Math.abs(dx) === 3 && Math.abs(dz) === 3)                        // columnas rotas
+          for (let y = 1; y <= 5; y++) if (hash3(wx, y, wz, SEED + 56) < 0.8) set(lx, gh + y, lz, W);
+      }
+      const lcx = ax - baseX, lcz = az - baseZ;                             // cripta con tesoro
+      if (lcx >= 0 && lcx < CH && lcz >= 0 && lcz < CH) {
+        for (let y = gh - 3; y <= gh - 1; y++) set(lcx, y, lcz, B.AIR);
+        set(lcx, gh - 3, lcz, B.GOLDBLOCK);
+        if (hash2(agx, agz, SEED + 57) < 0.45) set(lcx, gh - 2, lcz, B.MITHRIL);
+      }
+    }
+}
+
+/* ----- los Argonath: dos colosos coronados junto al Anduin ----- */
+function buildStatue(set, bx, bz, gh, face) {
+  const W = B.WSTONE;
+  for (let fz = -3; fz <= 3; fz++) for (let fx = -3; fx <= 3; fx++)        // pedestal
+    for (let y = 1; y <= 3; y++) set(bx + fx, gh + y, bz + fz, W);
+  for (const fz of [-2, -1, 1, 2]) for (let fx = -1; fx <= 1; fx++)        // piernas
+    for (let y = 4; y <= 15; y++) set(bx + fx, gh + y, bz + fz, W);
+  for (let y = 4; y <= 22; y++) for (let fz = -2; fz <= 2; fz++) for (let fx = -2; fx <= 2; fx++) {  // túnica
+    if (Math.abs(fz) === 2 && Math.abs(fx) === 2) continue; set(bx + fx, gh + y, bz + fz, W);
+  }
+  for (let y = 23; y <= 24; y++) for (let fz = -2; fz <= 2; fz++) for (let fx = -1; fx <= 1; fx++) set(bx + fx, gh + y, bz + fz, W);  // hombros
+  for (let y = 25; y <= 29; y++) for (let fz = -1; fz <= 1; fz++) for (let fx = -1; fx <= 1; fx++) set(bx + fx, gh + y, bz + fz, W);  // cabeza
+  for (let fz = -1; fz <= 1; fz++) for (let fx = -1; fx <= 1; fx++)        // corona de picos
+    if (Math.abs(fz) === 1 || Math.abs(fx) === 1) { set(bx + fx, gh + 30, bz + fz, W); if ((fz + fx) & 1) set(bx + fx, gh + 31, bz + fz, W); }
+  const af = 2 * Math.sign(face);                                          // brazo en alto, palma al río
+  for (let y = 14; y <= 27; y++) set(bx + af, gh + y, bz + 2, W);
+  for (let fz = 1; fz <= 2; fz++) for (let fx = 0; fx <= 1; fx++) set(bx + af + (face > 0 ? fx : -fx), gh + 27, bz + fz, W);  // mano
+}
+function genArgonath(data, cx, cz) {
+  const baseX = cx * CH, baseZ = cz * CH;
+  if (baseZ - 6 > ARG.z || baseZ + CH + 6 < ARG.z) return;                 // solo chunks cerca de z=ARG.z
+  const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx >= 0 && lx < CH && lz >= 0 && lz < CH && y >= 0 && y < WH) data[IDX(lx, y, lz)] = id; };
+  for (const [bx, face] of [[ARG.x - ARG.gap, 1], [ARG.x + ARG.gap, -1]]) {
+    if (baseX - 6 > bx || baseX + CH + 6 < bx) continue;
+    buildStatue(set, bx, ARG.z, 20, face);                                 // pedestal sobre la orilla (y≈20)
   }
 }
 
@@ -1297,6 +1385,34 @@ const TILE_PAINTERS = [
     actx.fillStyle = 'rgba(255,240,170,.6)'; actx.fillRect(ox + 2, oy + 2, 5, 2);
     actx.fillStyle = 'rgba(150,110,30,.5)'; actx.fillRect(ox + 9, oy + 11, 5, 2);
   },
+  /* 41 mossy_stone */ (ox, oy, rng) => {
+    speckle(ox, oy, [104, 106, 102], 0.1, rng);
+    actx.fillStyle = 'rgba(70,72,68,.7)';
+    for (let row = 0; row < 4; row++) { const off = (row % 2) * 4;
+      for (let col = -1; col < 3; col++) actx.fillRect(ox + off + col * 8 + 1, oy + row * 4 + 1, 6, 2); }
+    for (let i = 0; i < 18; i++) { px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 70, 110, 52); }  // musgo
+  },
+  /* 42 basalt */ (ox, oy, rng) => {
+    for (let x = 0; x < T; x++) { const f = 0.82 + (x % 3 === 0 ? -0.16 : 0) + rng() * 0.1;
+      for (let y = 0; y < T; y++) { const g = f * (1 + (rng() - 0.5) * 0.06); px(ox, oy, x, y, 56 * g, 52 * g, 60 * g); } }
+    actx.fillStyle = 'rgba(28,24,32,.7)'; actx.fillRect(ox + 5, oy, 1, T); actx.fillRect(ox + 11, oy, 1, T);
+  },
+  /* 43 ash */ (ox, oy, rng) => {
+    speckle(ox, oy, [120, 116, 112], 0.12, rng);
+    for (let i = 0; i < 8; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 80, 76, 74);
+  },
+  /* 44 mud */ (ox, oy, rng) => {
+    speckle(ox, oy, [74, 60, 44], 0.16, rng);
+    for (let i = 0; i < 6; i++) { actx.fillStyle = 'rgba(40,32,22,.6)'; actx.fillRect(ox + ((rng() * 14) | 0), oy + ((rng() * 14) | 0), 2, 2); }
+    actx.fillStyle = 'rgba(120,130,90,.25)'; actx.fillRect(ox, oy, T, 2);   // brillo verdoso
+  },
+  /* 45 soul_fire */ (ox, oy, rng) => {
+    for (let i = 0; i < 14; i++) {                          // llamas azules
+      const x = (rng() * 14) | 0, y = 3 + ((rng() * 12) | 0), h = 2 + ((rng() * 4) | 0);
+      actx.fillStyle = css(90, 200, 240); actx.fillRect(ox + x, oy + y, 2, h);
+    }
+    for (let i = 0; i < 6; i++) px(ox, oy, (rng() * 16) | 0, 8 + ((rng() * 8) | 0), 220, 250, 255);
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1342,6 +1458,11 @@ const TILE_MAP = {
   [B.BIRONORE]:{ all: 37 },
   [B.FORGE]:   { top: 39, bottom: 39, side: 38 },
   [B.GOLDBLOCK]:{ all: 40 },
+  [B.MOSSYSTONE]:{ all: 41 },
+  [B.BASALT]:  { all: 42 },
+  [B.ASH]:     { all: 43 },
+  [B.MUD]:     { all: 44 },
+  [B.SOULFIRE]:{ all: 45 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1492,7 +1613,7 @@ function buildChunkMesh(ch) {
       }
       continue;
     }
-    const bucket = id === B.WATER ? buckets.water : (id === B.LAVA || id === B.FIRE || id === B.MGLOW) ? buckets.glow : buckets.solid;
+    const bucket = id === B.WATER ? buckets.water : (id === B.LAVA || id === B.FIRE || id === B.MGLOW || id === B.SOULFIRE) ? buckets.glow : buckets.solid;
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const nb = nbAt(lx + face.dir[0], ly + face.dir[1], lz + face.dir[2]);
@@ -1634,6 +1755,7 @@ function physics(dt) {
   speed *= 1 - ARMOR[armorTier].slow;        // el hierro negro pesa; el mithril aligera
   const mnt = player.mount && player.mount.def.mount;
   if (mnt) speed *= mnt.speed;               // la montura corre más
+  if (worldGetBlock(Math.floor(player.x), Math.floor(player.y - 0.1), Math.floor(player.z)) === B.MUD) speed *= 0.5;  // el lodo frena
 
   let f = 0, r = 0;
   if (keys.has('KeyW')) f++; if (keys.has('KeyS')) f--;
@@ -3373,6 +3495,8 @@ const MARKERS = [
   { x: 30,  z: 192,  n: 'Abismo de Helm' },
   { x: 230, z: 230,  n: 'Minas Tirith' },
   { x: 261, z: 233,  n: 'Osgiliath' },
+  { x: 200, z: 165,  n: 'Ciénagas de los Muertos' },
+  { x: 278, z: 145,  n: 'Los Argonath' },
   { x: 330, z: 290,  n: 'Barad-dûr' },
 ];
 function ensureMapCache() {
@@ -3386,9 +3510,10 @@ function ensureMapCache() {
     for (let wz = MAPB.z0; wz < MAPB.z1; wz += step) for (let wx = MAPB.x0; wx < MAPB.x1; wx += step) {
       const b = biomeAt(wx, wz), h = heightAt(wx, wz);
       let c;
-      if (h < WATER_Y) c = b === BIOME.MORDOR ? [185, 62, 18] : [50, 98, 178];
+      if (h < WATER_Y) c = b === BIOME.MORDOR ? [185, 62, 18] : b === BIOME.MARSH ? [62, 78, 52] : [50, 98, 178];
       else {
         if (b === BIOME.MORDOR) c = [60, 48, 54];
+        else if (b === BIOME.MARSH) c = [70, 84, 56];
         else if (b === BIOME.MOUNTAIN || h >= 27) c = h >= 34 ? [226, 232, 238] : [134, 138, 143];
         else if (b === BIOME.LOTHLORIEN) c = [165, 142, 56];
         else c = [94, 152, 72];
@@ -3557,7 +3682,7 @@ let dayT = 0.22;            // 0..1, día completo = 300 s
 const DAY_LEN = 300;
 const sunDir = new THREE.Vector3();
 const COL_DAY = new THREE.Color(0x8ab4dd), COL_NIGHT = new THREE.Color(0x0a0e1e);
-const COL_DAWN = new THREE.Color(0xd9854e), COL_MORDOR = new THREE.Color(0x35221d);
+const COL_DAWN = new THREE.Color(0xd9854e), COL_MORDOR = new THREE.Color(0x35221d), COL_MARSH = new THREE.Color(0x46503a);
 const _sky = new THREE.Color();
 let fogNear = RD * 16 * 0.62, fogFar = RD * 16 * 1.05;
 
@@ -3571,9 +3696,10 @@ function updateSky(dt, time) {
   const dawnAmt = Math.max(0, 1 - Math.abs(s) / 0.28) * 0.55;
   _sky.lerp(COL_DAWN, dawnAmt);
 
-  const inMordor = inWorld && biomeAt(Math.floor(player.x), Math.floor(player.z)) === BIOME.MORDOR;
+  const hereBiome = inWorld ? biomeAt(Math.floor(player.x), Math.floor(player.z)) : -1;
   let tNear = RD * 16 * 0.62, tFar = RD * 16 * 1.05;
-  if (inMordor) { _sky.lerp(COL_MORDOR, 0.82); tNear = 14; tFar = 62; }
+  if (hereBiome === BIOME.MORDOR) { _sky.lerp(COL_MORDOR, 0.82); tNear = 14; tFar = 62; }
+  else if (hereBiome === BIOME.MARSH) { _sky.lerp(COL_MARSH, 0.5); tNear = 8; tFar = 40; }    // niebla espesa de pantano
 
   const lk = 1 - Math.exp(-1.6 * dt);
   skyColor.lerp(_sky, lk);

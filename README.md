@@ -92,6 +92,21 @@ De día aparecen **animales** salvajes según la zona:
 
 La **manzana de oro** se forja con 8 pepitas de oro (¡por fin un uso para el oro!) y también puedes comerla para curarte mucho. Tu montura actual aparece abajo a la izquierda (🐴).
 
+## 🪨 Paisaje de la Tierra Media
+
+Explorando encontrarás lugares y terrenos nuevos (todos en el mapa, tecla M):
+
+- **Los Argonath** — dos colosos coronados de piedra blanca que custodian el río Anduin, gigantescos como referencia visual.
+- **Ruinas de Arnor/Gondor** — restos de muros de piedra musgosa repartidos por llanuras y bosques; bajo el suelo central esconden una **cripta con tesoro** (oro y mithril): pica el suelo de la ruina para saquearla.
+- **Ciénagas de los Muertos** — un pantano de agua turbia y niebla espesa con **fuegos de almas** azules flotando; el **lodo te frena** al caminar. Crúzalo con cuidado (o sobre una montura).
+- **Mordor** ahora tiene **espiras de basalto** afiladas y suelo de **ceniza**, aún más inhóspito.
+
+Bloques nuevos para construir: piedra musgosa, basalto, ceniza, lodo y fuego de almas.
+
+---
+
+Con esto el mundo cubre **toda la Tierra Media**: agricultura y vida, metalurgia, enemigos, monturas y paisaje. ¡Que disfrutéis la aventura!
+
 ## El mapa de la Tierra Media
 
 Pulsa **M** para ver el mapa con tu posición. Los lugares famosos están construidos en el mundo, dispuestos como en el mapa real (el este queda a +x y el sur a +z):
