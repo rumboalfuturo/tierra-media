@@ -57,6 +57,10 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 - **Misiones**: arriba a la izquierda tienes un objetivo que te guía (consigue madera, fabrica tijeras, duerme, coloca una antorcha, explora una cueva…). Se completan solas al hacerlas.
 - **Libro de recetas** (tecla **B**): lista todas las recetas; en **verde** las que puedes hacer y en **rojo** las que te faltan materiales.
 
+## ⚔ Armas en el cinturón
+
+Las **espadas** ahora son **objetos del inventario**: al forjarlas se guardan en tu mochila. Asígnalas a un **hueco del cinturón (6–9)** en el menú E (pestaña 🎒) — aparecen resaltadas en rojo — y **selecciona ese hueco** para empuñarlas. Atacas con el arma que lleves en la mano; sin arma, golpeas con los puños (poco daño). La **Hoja de Morgul** también se empuña así.
+
 ## 📜 Ayuda en el juego
 
 Pulsa **C** en cualquier momento para abrir el **chat de ayuda de Gandalf**: escribe tu pregunta («¿cómo mato una araña?», «¿cómo hago una armadura?», «¿cómo domo un caballo?»…) o toca una de las sugerencias, y te responde al instante. Funciona sin conexión (es una guía integrada).

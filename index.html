@@ -431,7 +431,11 @@ const I = {
   BIRON_INGOT:212, STEEL_INGOT:213, MITHRIL_INGOT:214,
   WOLF_PELT:215, SPIDER_SILK:216, URUK_BANNER:217, MORGUL_BLADE:218, GOLDEN_APPLE:219,
   SHEARS:220,
+  SW_IRON:221, SW_STEEL:222, SW_SILVER:223, SW_BIRON:224, SW_MITHRIL:225,   // espadas (objetos del cinturón)
 };
+// objeto-arma → nivel de daño; la Hoja de Morgul también es un arma empuñable
+const WEAPON_ITEM = { [I.SW_IRON]:'iron', [I.SW_STEEL]:'steel', [I.SW_SILVER]:'silver', [I.SW_BIRON]:'blackiron', [I.SW_MITHRIL]:'mithril', [I.MORGUL_BLADE]:'morgul' };
+const isWeapon = id => WEAPON_ITEM[id] !== undefined;
 const isItem = id => id >= 200;
 // objetos que se pueden sembrar (item → bloque de cultivo y dónde)
 const PLANTABLE = {
@@ -439,7 +443,7 @@ const PLANTABLE = {
   [I.BARLEY_SEED]: { plant: B.BARLEYY,   on: 'farm' },
   [I.MALLORN_NUT]: { plant: B.MSPROUT,   on: 'soil' },
 };
-const beltable = id => MATERIALS.includes(id) || PLANTABLE[id] !== undefined;
+const beltable = id => MATERIALS.includes(id) || PLANTABLE[id] !== undefined || isWeapon(id);
 const NAMES = {
   [B.GRASS]:'Hierba', [B.DIRT]:'Tierra', [B.STONE]:'Piedra', [B.SNOW]:'Nieve',
   [B.LOG]:'Tronco de roble', [B.LEAVES]:'Hojas de roble', [B.MLOG]:'Tronco de mallorn',
@@ -467,6 +471,8 @@ const NAMES = {
   [I.WOLF_PELT]:'Piel de huargo', [I.SPIDER_SILK]:'Telaraña élfica',
   [I.URUK_BANNER]:'Estandarte de la Mano Blanca', [I.MORGUL_BLADE]:'Hoja de Morgul',
   [I.GOLDEN_APPLE]:'Manzana de oro', [I.SHEARS]:'Tijeras',
+  [I.SW_IRON]:'Espada de hierro', [I.SW_STEEL]:'Espada de Gondor', [I.SW_SILVER]:'Daga élfica',
+  [I.SW_BIRON]:'Cimitarra negra', [I.SW_MITHRIL]:'Espada de mithril',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -500,7 +506,7 @@ const ARMOR = {
   blackiron: { red:0.65, slow:0.18,  fireproof:false },   // máxima protección, pero pesa
   mithril:   { red:0.55, slow:-0.12, fireproof:true  },   // ligera como pluma, inmune al fuego
 };
-const NAME_TIER   = { base:'piedra', none:'—', iron:'hierro', steel:'acero', silver:'plata', blackiron:'hierro negro', mithril:'mithril' };
+const NAME_TIER   = { base:'piedra', none:'—', iron:'hierro', steel:'acero', silver:'plata', blackiron:'hierro negro', mithril:'mithril', morgul:'Morgul' };
 const WEAPON_DMG  = { none:1, iron:3, steel:5, silver:4, blackiron:6, mithril:7, morgul:9 };
 const WEAPON_NAME = { none:'puños', iron:'espada de hierro', steel:'espada de Gondor', silver:'daga élfica', blackiron:'cimitarra negra', mithril:'espada de mithril', morgul:'hoja de Morgul' };
 // la daga élfica (plata) y la hoja de Morgul golpean más fuerte a ciertos enemigos
@@ -2363,6 +2369,8 @@ function tryPlace(initial) {
   const mat = hotbarMats[sel - TOOLS.length];
   if (mat == null) { if (initial) toast('Hueco vacío — pulsa E y asigna un material'); return; }
   if (!(inv[mat] > 0)) { if (initial) toast('No te queda ' + NAMES[mat]); return; }
+  if (isWeapon(mat)) { if (initial) toast('Es un arma — ataca con clic izquierdo'); return; }   // las armas no se colocan
+  if (isItem(mat) && !PLANTABLE[mat]) return;
 
   // sembrar semillas / nueces sobre la tierra adecuada
   const seed = PLANTABLE[mat];
@@ -2494,8 +2502,13 @@ let health = HMAX, lastDamage = -9999;
 let fireTimer = 0, poisonTimer = 0, strengthTimer = 0, regenBuffTimer = 0, pipeSmoke = 0, fearTimer = 0;
 // metalurgia equipada (por jugador, local)
 let toolTier = { pick: 'base', shovel: 'base', axe: 'base' };
-let armorTier = 'none', weaponTier = 'none';
-const weaponDamage = () => WEAPON_DMG[weaponTier];   // listo para la fase de enemigos
+let armorTier = 'none';
+// el arma con la que luchas es la del hueco del cinturón seleccionado (objeto-arma); si no, puños
+function currentWeaponTier() {
+  if (sel < TOOLS.length) return 'none';
+  return WEAPON_ITEM[hotbarMats[sel - TOOLS.length]] || 'none';
+}
+const weaponDamage = () => WEAPON_DMG[currentWeaponTier()];
 let submerged = 0, peakY = 0, wasAir = false;
 let _regenAcc = 0, _fireAcc = 0, _poisonAcc = 0, _drownAcc = 0, _smokeAcc = 0;
 
@@ -2788,7 +2801,7 @@ function mobInCrosshair() { return entityInCrosshair(3.6, m => !m.def.passive); 
 function playerHitMob(m) {
   if (nowMs() - lastMelee < 380) return true;
   lastMelee = nowMs();
-  const dmg = weaponDamage() + ((WEAPON_BONUS[weaponTier] || {})[m.type] || 0);
+  const dmg = weaponDamage() + ((WEAPON_BONUS[currentWeaponTier()] || {})[m.type] || 0);
   spawnPuffs(m.x, m.y + 0.9, m.z, '#d23030', 3);
   if (isGuest) { if (hostConn && hostConn.open) hostConn.send({ t: 'mobhit', id: m.id, dmg }); m.hurtT = 0.22; }
   else hitMobBy(m, dmg, 'self');
@@ -3252,7 +3265,7 @@ function saveWorld() {
     inv, hotbarMats,
     chests: Object.fromEntries([...chests].filter(([k]) => k[0] !== '@')),
     crops: cropList,
-    gear: { tool: toolTier, armor: armorTier, weapon: weaponTier },
+    gear: { tool: toolTier, armor: armorTier },
     quest: { idx: questIdx, flags: questFlags },
   });
   currentWorld.last = Date.now();
@@ -3264,7 +3277,7 @@ function saveWorld() {
 
 // el invitado guarda su inventario en su navegador, ligado a la semilla del mundo del anfitrión
 function savePlayerStash() {
-  if (isGuest && inWorld) lsSet('tm_ginv_' + SEED, { inv, hotbarMats, gear: { tool: toolTier, armor: armorTier, weapon: weaponTier } });
+  if (isGuest && inWorld) lsSet('tm_ginv_' + SEED, { inv, hotbarMats, gear: { tool: toolTier, armor: armorTier } });
 }
 setInterval(() => { if (inWorld && saveDirty) { saveWorld(); savePlayerStash(); saveDirty = false; } }, 8000);
 window.addEventListener('beforeunload', () => { if (inWorld) { saveWorld(); savePlayerStash(); } });
@@ -3313,7 +3326,11 @@ function startWorld(meta, data, mode) {
     ? { pick: gear.tool.pick || 'base', shovel: gear.tool.shovel || 'base', axe: gear.tool.axe || 'base' }
     : { pick: 'base', shovel: 'base', axe: 'base' };
   armorTier = ARMOR[gear?.armor] ? gear.armor : 'none';
-  weaponTier = (gear && WEAPON_DMG[gear.weapon] !== undefined) ? gear.weapon : 'none';
+  // migración: si un guardado antiguo tenía un arma equipada, dáselo como objeto
+  if (gear && gear.weapon && gear.weapon !== 'none') {
+    const swItem = Object.keys(WEAPON_ITEM).find(k => WEAPON_ITEM[k] === gear.weapon);
+    if (swItem && !(inv[swItem] > 0)) inv[swItem] = 1;
+  }
   forgeOpen = false;
   updateGearHUD();
 
@@ -3523,6 +3540,7 @@ function drawToolIcon(g, key) {
 }
 function drawItemIcon(g, id) {
   g.clearRect(0, 0, 32, 32);
+  if (id >= I.SW_IRON && id <= I.SW_MITHRIL) { drawSwordIcon(g, WEAPON_ITEM[id]); return; }   // espadas
   if (id === I.PIPE_LEAF) {
     g.fillStyle = '#6e7a3a'; g.beginPath(); g.ellipse(16, 16, 11, 6, 0.5, 0, 7); g.fill();
     g.strokeStyle = '#4a5526'; g.lineWidth = 1; g.beginPath(); g.moveTo(8, 22); g.lineTo(24, 10); g.stroke();
@@ -3634,8 +3652,10 @@ function selectSlot(i) {
   if (i < TOOLS.length) toast(TOOLS[i].name);
   else {
     const mat = hotbarMats[i - TOOLS.length];
-    toast(mat != null ? NAMES[mat] + ' ×' + (inv[mat] || 0) : 'Hueco vacío — pulsa E para asignar un material');
+    if (mat != null && isWeapon(mat)) toast('⚔ ' + NAMES[mat] + ' empuñada — ataca con clic izquierdo (daño ' + WEAPON_DMG[WEAPON_ITEM[mat]] + ')');
+    else toast(mat != null ? NAMES[mat] + ' ×' + (inv[mat] || 0) : 'Hueco vacío — pulsa E para asignar un material');
   }
+  updateGearHUD();
 }
 
 /* ----- pantalla de inventario y cofres ----- */
@@ -3681,8 +3701,8 @@ function renderEquip() {
       note: toolTier.pick === 'base' ? '— básicas (fórjalas para picar más rápido)' : '— picas, cavas y talas más rápido' },
     { draw: g => drawArmorIcon(g, armorTier), name: 'Armadura', val: armorTier === 'none' ? 'sin armadura' : NAME_TIER[armorTier],
       note: armorTier === 'mithril' ? '— inmune al fuego y la lava' : armorTier === 'blackiron' ? '— muy recia, pero pesa' : armorTier === 'none' ? '— ¡fórjate una en la forja!' : '— amortigua los golpes' },
-    { draw: g => drawSwordIcon(g, weaponTier), name: 'Arma', val: weaponTier === 'none' ? 'puños' : WEAPON_NAME[weaponTier],
-      note: weaponTier === 'none' ? '— forja una espada para luchar' : '— daño ' + WEAPON_DMG[weaponTier] },
+    { draw: g => drawSwordIcon(g, currentWeaponTier()), name: 'Arma en mano', val: currentWeaponTier() === 'none' ? 'puños' : WEAPON_NAME[currentWeaponTier()],
+      note: currentWeaponTier() === 'none' ? '— pon una espada en un hueco 6–9 y selecciónala' : '— daño ' + WEAPON_DMG[currentWeaponTier()] },
   ];
   for (const r of rows) {
     const row = document.createElement('div'); row.className = 'craftrow';
@@ -3707,14 +3727,17 @@ function renderInv() {
   const grid = $('invgrid');
   grid.innerHTML = '';
   let any = false;
-  for (const id of [...MATERIALS, I.PIPE_SEED, I.BARLEY_SEED, I.MALLORN_NUT]) {
+  for (const id of [I.SW_IRON, I.SW_STEEL, I.SW_SILVER, I.SW_BIRON, I.SW_MITHRIL, I.MORGUL_BLADE,
+                    ...MATERIALS, I.PIPE_SEED, I.BARLEY_SEED, I.MALLORN_NUT]) {
     if (!(inv[id] > 0)) continue;
     any = true;
-    grid.appendChild(makeIslot(id, inv[id], () => {
+    const slot = makeIslot(id, inv[id], () => {
       hotbarMats[invSelSlot] = id;
       saveDirty = true; refreshHotbar(); renderInv();
       toast(NAMES[id] + ' → hueco ' + (TOOLS.length + invSelSlot + 1));
-    }));
+    });
+    if (isWeapon(id)) slot.style.borderColor = 'rgba(210,150,150,.6)';   // resaltar las armas
+    grid.appendChild(slot);
   }
   if (!any) grid.innerHTML = '<div class="empty">Aún no tienes materiales — mantén el clic izquierdo sobre un bloque para picarlo.</div>';
 
@@ -3725,7 +3748,6 @@ function renderInv() {
     { id: I.ATHELAS_LEAF, use: () => consumeAthelas() },
     { id: I.PIPE,         use: () => smokePipe(), label: 'Fumar' },
     { id: I.ALE,          use: () => drinkAle() },
-    { id: I.MORGUL_BLADE, use: () => { if (inv[I.MORGUL_BLADE] > 0) { removeInv(I.MORGUL_BLADE, 1); setWeapon('morgul'); } }, label: 'Empuñar' },
     { id: I.GOLDEN_APPLE, use: () => { if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); heal(10); regenBuffTimer = 20; toast('La manzana de oro te restaura'); } }, label: 'Comer' },
   ];
   const useable = new Map(consumables.map(c => [c.id, c]));
@@ -3932,17 +3954,18 @@ function renderChest() {
 /* ----- la forja (alto horno): fundir minerales y forjar equipo ----- */
 let forgeOpen = false;
 function openForge() { forgeOpen = true; document.exitPointerLock(); }
-function gearText() { return '⚒ herramientas: ' + NAME_TIER[toolTier.pick] + '  ·  🛡 armadura: ' + NAME_TIER[armorTier] + '  ·  ⚔ arma: ' + WEAPON_NAME[weaponTier]; }
+function gearText() { return '⚒ herramientas: ' + NAME_TIER[toolTier.pick] + '  ·  🛡 armadura: ' + NAME_TIER[armorTier] + '  ·  ⚔ arma: ' + WEAPON_NAME[currentWeaponTier()]; }
 function updateGearHUD() {
+  const wt = currentWeaponTier();
   const g = (toolTier.pick !== 'base' ? '⚒' + NAME_TIER[toolTier.pick] + ' ' : '')
           + (armorTier !== 'none' ? '🛡' + NAME_TIER[armorTier] + ' ' : '')
-          + (weaponTier !== 'none' ? '⚔' + NAME_TIER[weaponTier] + ' ' : '')
+          + (wt !== 'none' ? '⚔' + NAME_TIER[wt] + ' ' : '')
           + (player.mount ? '🐴' + player.mount.def.name : '');
   $('gearinfo').textContent = g;
 }
 function setTools(t)  { toolTier.pick = toolTier.shovel = toolTier.axe = t; saveDirty = true; toast('Forjas herramientas de ' + NAME_TIER[t]); updateGearHUD(); }
 function setArmor(t)  { armorTier = t; saveDirty = true; toast('Te ciñes una armadura de ' + NAME_TIER[t]); updateGearHUD(); }
-function setWeapon(t) { weaponTier = t; saveDirty = true; toast('Empuñas una ' + WEAPON_NAME[t]); updateGearHUD(); }
+function forgeWeapon(itemId) { addInv(itemId, 1); toast('Has forjado: ' + NAMES[itemId] + '  (se guarda en tu inventario; selecciónala en el cinturón para luchar)'); updateGearHUD(); }
 function addRecipe(box, r) {
   const can = r.need.every(([id, n]) => (inv[id] || 0) >= n);
   const row = document.createElement('div'); row.className = 'craftrow';
@@ -3976,11 +3999,11 @@ function renderForge() {
     { label: 'Armadura de acero (6 acero)',        need: [[I.STEEL_INGOT, 6]],  out: () => setArmor('steel') },
     { label: 'Armadura de hierro negro (6) — recia',need: [[I.BIRON_INGOT, 6]], out: () => setArmor('blackiron') },
     { label: 'Armadura de mithril (6) — inmune al fuego', need: [[I.MITHRIL_INGOT, 6]], out: () => setArmor('mithril') },
-    { label: 'Espada de hierro (2 hierro)',        need: [[I.IRON_INGOT, 2]],   out: () => setWeapon('iron') },
-    { label: 'Espada de Gondor (2 acero)',         need: [[I.STEEL_INGOT, 2]],  out: () => setWeapon('steel') },
-    { label: 'Daga élfica (2 plata)',              need: [[I.SILVER_INGOT, 2]], out: () => setWeapon('silver') },
-    { label: 'Cimitarra negra (3 hierro negro)',   need: [[I.BIRON_INGOT, 3]],  out: () => setWeapon('blackiron') },
-    { label: 'Espada de mithril (2 mithril)',      need: [[I.MITHRIL_INGOT, 2]],out: () => setWeapon('mithril') },
+    { label: 'Espada de hierro (2 hierro)',        need: [[I.IRON_INGOT, 2]],   out: () => forgeWeapon(I.SW_IRON) },
+    { label: 'Espada de Gondor (2 acero)',         need: [[I.STEEL_INGOT, 2]],  out: () => forgeWeapon(I.SW_STEEL) },
+    { label: 'Daga élfica (2 plata)',              need: [[I.SILVER_INGOT, 2]], out: () => forgeWeapon(I.SW_SILVER) },
+    { label: 'Cimitarra negra (3 hierro negro)',   need: [[I.BIRON_INGOT, 3]],  out: () => forgeWeapon(I.SW_BIRON) },
+    { label: 'Espada de mithril (2 mithril)',      need: [[I.MITHRIL_INGOT, 2]],out: () => forgeWeapon(I.SW_MITHRIL) },
     { label: 'Tijeras (2 hierro) — para esquilar ovejas y cabras', need: [[I.IRON_INGOT, 2]], out: () => { addInv(I.SHEARS, 1); toast('Has fabricado unas tijeras'); } },
   ].forEach(r => addRecipe(fb, r));
   $('gearline').textContent = gearText();
@@ -4335,8 +4358,8 @@ window.G = {
   consumeAthelas, smokePipe, drinkAle,
   crops, growAll() { for (const c of crops.values()) c.t -= 999999; growCrops(nowMs()); },
   // metalurgia (para pruebas)
-  gear: () => ({ tool: { ...toolTier }, armor: armorTier, weapon: weaponTier }),
-  setTools, setArmor, setWeapon, openForge, renderForge,
+  gear: () => ({ tool: { ...toolTier }, armor: armorTier, weapon: currentWeaponTier() }),
+  setTools, setArmor, forgeWeapon, currentWeaponTier, openForge, renderForge,
   // enemigos (para pruebas)
   mobs, spawnMob, trySpawn, updateMobs, fear, fearT: () => fearTimer,
   mobList: () => [...mobs.values()].map(m => ({ id: m.id, type: m.type, hp: m.hp, x: +m.x.toFixed(1), y: +m.y.toFixed(1), z: +m.z.toFixed(1) })),
