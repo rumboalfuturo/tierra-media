@@ -42,6 +42,14 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 - **Agua y lava que fluyen**: si quitas un bloque al lado de agua o lava, el líquido **fluye hacia el hueco y lo llena**; si quitas la fuente, se vacía. El agua se extiende más lejos que la lava. (Los lagos y mares del mundo son fuentes inagotables.)
 - **Cámara en 3ª persona**: pulsa **V** para verte desde fuera (y volver a 1ª persona).
 
+## 🐑 Ovejas, lana y dormir
+
+- **Días aún más largos**: ahora el día dura **15 min** y la noche **6 min** (constantes `DAY_DURATION` / `NIGHT_DURATION`).
+- **Ovejas** en praderas y montañas: dan **lana** si las esquilas con **tijeras** (clic derecho). La lana les vuelve a crecer al cabo de un minuto.
+- **Tijeras**: se forjan con **2 lingotes de hierro** en la forja.
+- **Lecho de lana**: con **3 de lana** fabricas un lecho; colócalo y **clic derecho de noche para dormir** y saltar hasta el amanecer.
+- **Obsidiana**: cuando el **agua toca la lava** se forma obsidiana (un bloque muy resistente), en vez de piedra.
+
 ## 📜 Ayuda en el juego
 
 Pulsa **C** en cualquier momento para abrir el **chat de ayuda de Gandalf**: escribe tu pregunta («¿cómo mato una araña?», «¿cómo hago una armadura?», «¿cómo domo un caballo?»…) o toca una de las sugerencias, y te responde al instante. Funciona sin conexión (es una guía integrada).

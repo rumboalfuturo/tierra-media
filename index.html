@@ -29,6 +29,8 @@
   #fx-poison { position:absolute; inset:0; box-shadow:inset 0 0 140px rgba(60,170,40,.65); opacity:0; transition:opacity .5s; }
   #fx-fire   { position:absolute; inset:0; box-shadow:inset 0 0 160px rgba(230,90,10,.7); opacity:0; transition:opacity .25s; }
   #fx-fear   { position:absolute; inset:0; background:radial-gradient(circle, transparent 30%, rgba(8,2,16,.92)); opacity:0; transition:opacity .6s; }
+  #fx-sleep  { position:fixed; inset:0; background:#000; opacity:0; transition:opacity 1.1s; pointer-events:none; z-index:30;
+               display:flex; align-items:center; justify-content:center; color:#cbb27c; font-style:italic; font-size:22px; letter-spacing:2px; }
   #fx-buff   { position:fixed; top:200px; right:14px; color:#ffe9a0; font-size:13px; font-family:monospace;
                text-shadow:0 1px 4px #000; text-align:right; line-height:1.6; }
 
@@ -210,6 +212,7 @@
   <div id="fx-hurt"></div>
   <div id="fx-buff"></div>
 </div>
+<div id="fx-sleep"></div>
 <div id="toast"></div>
 <div id="hotbar"></div>
 
@@ -393,6 +396,7 @@ const B = {
   ATHELAS:30, MSPROUT:31, MGLOW:32, BARREL:33,
   IRONORE:34, GOLDORE:35, SILVERORE:36, BIRONORE:37, FORGE:38, GOLDBLOCK:39,
   MOSSYSTONE:40, BASALT:41, ASH:42, MUD:43, SOULFIRE:44,
+  WOOL:45, BED:46, OBSIDIAN:47,
 };
 const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
 // mineral → lingote al fundir en la forja (B.MITHRIL incluido)
@@ -408,6 +412,7 @@ const I = {
   IRON_INGOT:208, GOLD_INGOT:209, GOLD_NUGGET:210, SILVER_INGOT:211,
   BIRON_INGOT:212, STEEL_INGOT:213, MITHRIL_INGOT:214,
   WOLF_PELT:215, SPIDER_SILK:216, URUK_BANNER:217, MORGUL_BLADE:218, GOLDEN_APPLE:219,
+  SHEARS:220,
 };
 const isItem = id => id >= 200;
 // objetos que se pueden sembrar (item → bloque de cultivo y dónde)
@@ -432,6 +437,7 @@ const NAMES = {
   [B.IRONORE]:'Mineral de hierro', [B.GOLDORE]:'Mineral de oro', [B.SILVERORE]:'Mineral de plata',
   [B.BIRONORE]:'Mineral de hierro negro', [B.FORGE]:'Forja (alto horno)', [B.GOLDBLOCK]:'Bloque de oro',
   [B.MOSSYSTONE]:'Piedra musgosa', [B.BASALT]:'Basalto', [B.ASH]:'Ceniza', [B.MUD]:'Lodo', [B.SOULFIRE]:'Fuego de almas',
+  [B.WOOL]:'Lana', [B.BED]:'Lecho de lana', [B.OBSIDIAN]:'Obsidiana',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
@@ -441,7 +447,7 @@ const NAMES = {
   [I.STEEL_INGOT]:'Acero de Gondor', [I.MITHRIL_INGOT]:'Lingote de mithril',
   [I.WOLF_PELT]:'Piel de huargo', [I.SPIDER_SILK]:'Telaraña élfica',
   [I.URUK_BANNER]:'Estandarte de la Mano Blanca', [I.MORGUL_BLADE]:'Hoja de Morgul',
-  [I.GOLDEN_APPLE]:'Manzana de oro',
+  [I.GOLDEN_APPLE]:'Manzana de oro', [I.SHEARS]:'Tijeras',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -456,7 +462,7 @@ const NMAT = 4;
 // materiales que se pueden tener en el inventario
 const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
                    B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.IRONORE, B.GOLDORE, B.SILVERORE, B.BIRONORE,
-                   B.GOLDBLOCK, B.MOSSYSTONE, B.BASALT, B.ASH, B.MUD, B.SOULFIRE, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
+                   B.GOLDBLOCK, B.MOSSYSTONE, B.BASALT, B.ASH, B.MUD, B.SOULFIRE, B.OBSIDIAN, B.WOOL, B.BED, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
                 [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
@@ -757,7 +763,8 @@ function processReacts(now) {
         let cooled = false;
         for (const d of DIRS6) {
           if (worldGetBlock(e.x + d[0], e.y + d[1], e.z + d[2]) === B.WATER) {
-            playerSetBlock(e.x, e.y, e.z, B.STONE);   // el agua enfría la lava
+            playerSetBlock(e.x, e.y, e.z, B.OBSIDIAN);   // agua + lava → obsidiana
+            if (Math.hypot(e.x - player.x, e.z - player.z) < 24) toast('Se ha formado obsidiana');
             cooled = true; break;
           }
         }
@@ -770,7 +777,7 @@ function processReacts(now) {
       } else if (id === B.WATER) {
         for (const d of DIRS6) {
           if (worldGetBlock(e.x + d[0], e.y + d[1], e.z + d[2]) === B.LAVA)
-            playerSetBlock(e.x + d[0], e.y + d[1], e.z + d[2], B.STONE);
+            playerSetBlock(e.x + d[0], e.y + d[1], e.z + d[2], B.OBSIDIAN);
         }
       } else if (FLAMMABLE.has(id)) {
         for (const d of DIRS6) {
@@ -1302,7 +1309,7 @@ function genStructures(data, cx, cz) {
 /* ============================================================
    TEXTURAS (atlas procedural en canvas)
 ============================================================ */
-const T = 16, ACOLS = 8, AROWS = 6;
+const T = 16, ACOLS = 8, AROWS = 8;
 const atlasCanvas = document.createElement('canvas');
 atlasCanvas.width = ACOLS * T; atlasCanvas.height = AROWS * T;
 const actx = atlasCanvas.getContext('2d');
@@ -1572,6 +1579,22 @@ const TILE_PAINTERS = [
     }
     for (let i = 0; i < 6; i++) px(ox, oy, (rng() * 16) | 0, 8 + ((rng() * 8) | 0), 220, 250, 255);
   },
+  /* 46 wool */ (ox, oy, rng) => {
+    speckle(ox, oy, [232, 230, 224], 0.05, rng);
+    for (let i = 0; i < 22; i++) { const x = (rng() * 15) | 0, y = (rng() * 15) | 0;
+      actx.fillStyle = 'rgba(205,203,196,.7)'; actx.fillRect(ox + x, oy + y, 2, 2); }
+  },
+  /* 47 bed */ (ox, oy, rng) => {
+    speckle(ox, oy, [196, 70, 64], 0.08, rng);             // colcha roja
+    actx.fillStyle = css(236, 232, 224); actx.fillRect(ox, oy, T, 4);     // almohada arriba
+    actx.fillStyle = css(120, 80, 44); actx.fillRect(ox, oy + 14, T, 2);  // base de madera
+    actx.fillStyle = 'rgba(150,40,36,.6)'; for (let y = 6; y < 14; y += 3) actx.fillRect(ox, oy + y, T, 1);
+  },
+  /* 48 obsidian */ (ox, oy, rng) => {
+    speckle(ox, oy, [28, 22, 38], 0.25, rng);
+    for (let i = 0; i < 5; i++) { actx.fillStyle = 'rgba(110,70,150,.5)';
+      actx.fillRect(ox + ((rng() * 13) | 0), oy + ((rng() * 13) | 0), 3, 2); }
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1622,6 +1645,9 @@ const TILE_MAP = {
   [B.ASH]:     { all: 43 },
   [B.MUD]:     { all: 44 },
   [B.SOULFIRE]:{ all: 45 },
+  [B.WOOL]:    { all: 46 },
+  [B.BED]:     { all: 47 },
+  [B.OBSIDIAN]:{ all: 48 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1872,6 +1898,7 @@ function resetWorld() {
   clearDrops(); clearParticles(); clearMobs();
   if (mountMesh) { scene.remove(mountMesh); mountMesh = null; }
   player.mount = null; chests.delete('@bag');
+  sleeping = false; const sfx = $('fx-sleep'); if (sfx) sfx.style.opacity = 0;
   disposeSelfMesh();
   for (const id of [...avatars.keys()]) removeAvatar(id);
 }
@@ -2035,9 +2062,10 @@ const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
 // golpes necesarios por bloque: cada clic es un golpe
 function hitsFor(id, tool) {
   let base, match;
-  if (isPlant(id) || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW) return 1;
+  if (isPlant(id) || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW || id === B.WOOL) return 1;
   if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW || id === B.FARMLAND) { base = 2; match = 'shovel'; }
-  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || isDoorId(id)) { base = 4; match = 'axe'; }
+  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || id === B.BED || isDoorId(id)) { base = 4; match = 'axe'; }
+  else if (id === B.OBSIDIAN) { base = 14; match = 'pick'; }   // muy resistente
   else if (id === B.MITHRIL) { base = 9; match = 'pick'; }
   else { base = 6; match = 'pick'; }   // piedra y similares
   return tool === match ? Math.max(1, Math.round(base / 3)) : base;
@@ -2210,6 +2238,22 @@ function drinkBarrel(k) {
   toast('Sirves una jarra de cerveza  (úsala desde el inventario)');
 }
 
+/* ----- dormir hasta el amanecer (necesita un lecho y que sea de noche) ----- */
+let sleeping = false;
+function sleepInBed() {
+  if (sleeping) return;
+  if (!isNight()) { toast('Solo puedes dormir de noche'); return; }
+  sleeping = true;
+  const fx = $('fx-sleep'); fx.textContent = 'Durmiendo…'; fx.style.opacity = 1;
+  setTimeout(() => {
+    if (isGuest) { if (hostConn && hostConn.open) hostConn.send({ t: 'sleep' }); }
+    else { dayT = 0.02; if (isHost) broadcast({ t: 'day', dayT }); }   // amanece
+    toast('Has dormido hasta el amanecer'); heal(4);
+    fx.textContent = 'Amanece…';
+    setTimeout(() => { fx.style.opacity = 0; sleeping = false; }, 700);
+  }, 1300);
+}
+
 function tryPlace(initial) {
   if (initial && !player.mount) {                 // interactuar con un animal que tengamos delante
     const animal = entityInCrosshair(3.2, m => m.def.passive);
@@ -2221,6 +2265,7 @@ function tryPlace(initial) {
   if (hit.id === B.CHEST) { if (initial) openChest(hit.x + ',' + hit.y + ',' + hit.z); return; }
   if (hit.id === B.FORGE) { if (initial) openForge(); return; }
   if (hit.id === B.BARREL) { if (initial) drinkBarrel(hit.x + ',' + hit.y + ',' + hit.z); return; }
+  if (hit.id === B.BED) { if (initial) sleepInBed(); return; }
 
   // la pala labra la tierra en tierra arada
   if (currentTool() === 'shovel') {
@@ -2504,17 +2549,21 @@ const MOB = {
   horse:  { name:'Caballo de Rohan',   hp:30, passive:true, speed:3.0, scale:1.30, body:0x6f4f30, head:0x5e4228, shape:'quad', mount:{ speed:1.95, jump:8.6 } },
   pony:   { name:'Poni de la Comarca',  hp:20, passive:true, speed:2.6, scale:0.85, body:0x8a6a44, head:0x7a5a38, shape:'quad', mount:{ speed:1.5, jump:8.2, storage:true } },
   goat:   { name:'Cabra de Erebor',    hp:18, passive:true, speed:2.8, scale:0.90, body:0xd2caba, head:0xe2dacc, shape:'quad', horns:true, mount:{ speed:1.3, jump:11, climb:true, noFall:true } },
+  sheep:  { name:'Oveja',              hp:16, passive:true, speed:2.2, scale:0.80, body:0xe8e6df, head:0xc9b9a6, shape:'quad', wooly:true },
 };
+const WOOL_REGROW = 60000;   // la lana vuelve a crecer en 1 min
 const MOB_DROP = {
   orc:    () => { const o = [[B.BIRONORE, 1 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.5) o.push([I.WOLF_PELT, 1]); return o; },
   uruk:   () => { const o = [[B.BIRONORE, 2 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.6) o.push([I.URUK_BANNER, 1]); return o; },
   spider: () => [[I.SPIDER_SILK, 1 + (Math.random() < 0.5 ? 1 : 0)]],
   nazgul: () => [[I.MORGUL_BLADE, 1], [I.GOLD_INGOT, 2]],
-  horse:  () => [], pony: () => [], goat: () => [[I.WOLF_PELT, 1]],
+  horse:  () => [], pony: () => [], goat: () => [[I.WOLF_PELT, 1]], sheep: () => [[B.WOOL, 1]],
 };
 
-// el día ocupa el 64% del ciclo (días más largos que las noches)
-const dayAngle = t => t < 0.64 ? (t / 0.64) * Math.PI : Math.PI + ((t - 0.64) / 0.36) * Math.PI;
+// duración del día y la noche (fáciles de modificar)
+const DAY_DURATION = 15 * 60, NIGHT_DURATION = 6 * 60;
+const DAY_FRAC = DAY_DURATION / (DAY_DURATION + NIGHT_DURATION);   // proporción de día en el ciclo
+const dayAngle = t => t < DAY_FRAC ? (t / DAY_FRAC) * Math.PI : Math.PI + ((t - DAY_FRAC) / (1 - DAY_FRAC)) * Math.PI;
 const sunY = () => Math.sin(dayAngle(dayT));
 const isNight = () => sunY() < -0.05;
 const isDayTime = () => sunY() > 0.18;
@@ -2579,7 +2628,7 @@ function spawnMob(type, x, y, z, id) {
   scene.add(group);
   const def = MOB[type];
   const m = { id, type, def, x, y, z, vx: 0, vy: 0, vz: 0, yaw: 0, hp: def.hp, mh: def.hp,
-              onGround: false, atkCd: 0, hurtT: 0, wander: 0, wyaw: 0, anim: 0,
+              onGround: false, atkCd: 0, hurtT: 0, wander: 0, wyaw: 0, anim: 0, wool: !!def.wooly, woolT: 0,
               tx: x, ty: y, tz: z, tyaw: 0, group, mats, limbs };
   mobs.set(id, m);
   return m;
@@ -2760,13 +2809,13 @@ function applyMobSnapshot(list) {
     if (!m) m = spawnMob(e.ty, e.x, e.y, e.z, e.id);
     if (!m) continue;
     if (e.hp < m.hp) m.hurtT = 0.22;
-    m.tx = e.x; m.ty = e.y; m.tz = e.z; m.tyaw = e.yaw; m.hp = e.hp; m.mh = e.mh; m.tame = !!e.tm;
+    m.tx = e.x; m.ty = e.y; m.tz = e.z; m.tyaw = e.yaw; m.hp = e.hp; m.mh = e.mh; m.tame = !!e.tm; m.wool = !!e.wl;
   }
   for (const id of [...mobs.keys()]) if (!seen.has(id)) removeMob(id);
 }
 function mobSnapshot() {
   const list = [];
-  for (const m of mobs.values()) list.push({ id: m.id, ty: m.type, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), yaw: +m.yaw.toFixed(2), hp: m.hp, mh: m.mh, tm: m.tame ? 1 : 0 });
+  for (const m of mobs.values()) list.push({ id: m.id, ty: m.type, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), yaw: +m.yaw.toFixed(2), hp: m.hp, mh: m.mh, tm: m.tame ? 1 : 0, wl: m.wool ? 1 : 0 });
   return list;
 }
 
@@ -2793,6 +2842,7 @@ function updatePassive(m, dt) {
   mobMove(m, dt);
   if (blockAtF(m.x, m.y + 0.1, m.z) === B.LAVA || m.y < -8) { m.hp = 0; }
   if (m.hp <= 0) { killMob(m, null); return; }
+  if (m.def.wooly && !m.wool && m.woolT && nowMs() > m.woolT) { m.wool = true; m.woolT = 0; }   // le vuelve a crecer la lana
   const d2 = (player.x - m.x) ** 2 + (player.z - m.z) ** 2;
   if (d2 > (m.tame ? 110 : 64) ** 2) { removeMob(m.id); return; }
   m.anim += dt * (moving ? 8 : 1.5);
@@ -2819,11 +2869,24 @@ function entityInCrosshair(maxDist, filter) {
 }
 
 function interactAnimal(m) {
+  if (m.def.wooly) {                              // ovejas: solo se esquilan
+    if (inv[I.SHEARS] <= 0) { toast('Necesitas tijeras para cortar la lana'); return; }
+    if (!m.wool) { toast('La oveja aún no tiene lana'); return; }
+    shearAnimal(m); return;
+  }
   if (m.tame) { mountAnimal(m); return; }
   if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); doTame(m, true); }
   else if (inv[I.BARLEY_GRAIN] > 0) { removeInv(I.BARLEY_GRAIN, 1); doTame(m, false); }
   else { toast('Necesitas grano de cebada (o una manzana de oro) para domarlo'); return; }
   spawnPuffs(m.x, m.y + 1.0, m.z, '#ff8ab0', 5);
+}
+function shearAnimal(m) {
+  const n = 1 + ((Math.random() * 3) | 0);       // 1..3 de lana
+  addInv(B.WOOL, n);
+  m.wool = false; m.woolT = nowMs() + WOOL_REGROW;
+  spawnPuffs(m.x, m.y + 0.8, m.z, '#f0eee6', 8);
+  toast('Has obtenido ' + n + ' de lana');
+  if (isGuest && hostConn && hostConn.open) hostConn.send({ t: 'shear', id: m.id });
 }
 function doTame(m, instant) {
   if (isGuest && hostConn && hostConn.open) hostConn.send({ t: 'tame', id: m.id, instant });
@@ -2871,8 +2934,8 @@ function trySpawnAnimal(now) {
   if (gy < 0) return;
   const biome = biomeAt(sx, sz);
   let type = null;
-  if (biome === BIOME.MOUNTAIN || gy - 1 >= 27) type = 'goat';
-  else if (biome === BIOME.SHIRE) type = Math.random() < 0.5 ? 'horse' : 'pony';
+  if (biome === BIOME.MOUNTAIN || gy - 1 >= 27) type = Math.random() < 0.4 ? 'sheep' : 'goat';
+  else if (biome === BIOME.SHIRE) { const r2 = Math.random(); type = r2 < 0.35 ? 'sheep' : r2 < 0.67 ? 'horse' : 'pony'; }
   else return;
   spawnMob(type, sx + 0.5, gy, sz + 0.5);
 }
@@ -2968,6 +3031,11 @@ function onHostData(conn, m) {
   } else if (m.t === 'tame') {
     const a = mobs.get(m.id);
     if (a && a.def.passive) { if (m.instant) a.tame = true; else { a.feed = (a.feed || 0) + 1; if (a.feed >= 4) a.tame = true; } }
+  } else if (m.t === 'shear') {
+    const a = mobs.get(m.id);
+    if (a && a.def.wooly && a.wool) { a.wool = false; a.woolT = nowMs() + WOOL_REGROW; }
+  } else if (m.t === 'sleep') {
+    if (isNight()) { dayT = 0.02; broadcast({ t: 'day', dayT }); }
   } else if (m.t === 'mount') {
     removeMob(m.id);
   } else if (m.t === 'dismount') {
@@ -3411,6 +3479,12 @@ function drawItemIcon(g, id) {
     g.fillStyle = '#fff3b0'; g.beginPath(); g.arc(12, 15, 3, 0, 7); g.fill();              // brillo
     g.strokeStyle = '#6a4e20'; g.lineWidth = 2; g.beginPath(); g.moveTo(15, 10); g.lineTo(17, 6); g.stroke();  // rabito
     g.fillStyle = '#5a8a3a'; g.beginPath(); g.ellipse(19, 7, 3, 1.6, 0.6, 0, 7); g.fill(); // hoja
+  } else if (id === I.SHEARS) {                              // tijeras
+    g.strokeStyle = '#b9c0c8'; g.lineWidth = 3; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(8, 8); g.lineTo(20, 20); g.stroke();
+    g.beginPath(); g.moveTo(8, 20); g.lineTo(20, 8); g.stroke();
+    g.fillStyle = '#5a3a1c'; g.beginPath(); g.arc(22, 22, 3.5, 0, 7); g.fill();
+    g.beginPath(); g.arc(22, 6, 3.5, 0, 7); g.fill();
   }
 }
 function drawMatIcon(g, id) {
@@ -3592,6 +3666,8 @@ function renderInv() {
       go: () => { removeInv(I.BARLEY_GRAIN, 3); removeInv(B.PLANK, 3); addInv(B.BARREL, 1); toast('+1 Barril  (colócalo; clic derecho para servir cerveza)'); } },
     { label: '8 piedra labrada → 1 forja (para fundir metal)', can: inv[B.COBBLE] >= 8,
       go: () => { removeInv(B.COBBLE, 8); addInv(B.FORGE, 1); toast('+1 Forja  (colócala y clic derecho para fundir y forjar)'); } },
+    { label: '3 lana → 1 lecho de lana', can: inv[B.WOOL] >= 3,
+      go: () => { removeInv(B.WOOL, 3); addInv(B.BED, 1); toast('Has fabricado un lecho de lana  (colócalo y duerme de noche)'); } },
   ];
   for (const r of recipes) {
     const row = document.createElement('div');
@@ -3764,6 +3840,7 @@ function renderForge() {
     { label: 'Daga élfica (2 plata)',              need: [[I.SILVER_INGOT, 2]], out: () => setWeapon('silver') },
     { label: 'Cimitarra negra (3 hierro negro)',   need: [[I.BIRON_INGOT, 3]],  out: () => setWeapon('blackiron') },
     { label: 'Espada de mithril (2 mithril)',      need: [[I.MITHRIL_INGOT, 2]],out: () => setWeapon('mithril') },
+    { label: 'Tijeras (2 hierro) — para esquilar ovejas y cabras', need: [[I.IRON_INGOT, 2]], out: () => { addInv(I.SHEARS, 1); toast('Has fabricado unas tijeras'); } },
   ].forEach(r => addRecipe(fb, r));
   $('gearline').textContent = gearText();
 }
@@ -3982,8 +4059,8 @@ document.addEventListener('wheel', e => {
 /* ============================================================
    CICLO DÍA / NOCHE
 ============================================================ */
-let dayT = 0.18;            // 0..1, ciclo completo = 12 min (con el día más largo que la noche)
-const DAY_LEN = 720;
+let dayT = 0.12;            // 0..1, ciclo completo = día + noche (DAY_DURATION + NIGHT_DURATION)
+const DAY_LEN = DAY_DURATION + NIGHT_DURATION;
 const sunDir = new THREE.Vector3();
 const COL_DAY = new THREE.Color(0x8ab4dd), COL_NIGHT = new THREE.Color(0x0a0e1e);
 const COL_DAWN = new THREE.Color(0xd9854e), COL_MORDOR = new THREE.Color(0x35221d), COL_MARSH = new THREE.Color(0x46503a);
@@ -4123,6 +4200,7 @@ window.G = {
   animals: () => [...mobs.values()].filter(m => m.def.passive).map(m => ({ id: m.id, type: m.type, tame: !!m.tame })),
   forceRender() { renderer.render(scene, camera); },
   setCam(m) { camMode = m; }, fluids: () => ({ queue: fluidQ.length, niveles: fluidLvl.size }),
+  sleep: sleepInBed, sleeping: () => sleeping, interactAnimal,
   setDayRaw(t) { dayT = t; }, dayInfo: () => ({ dayT, sunY: sunY(), noche: isNight(), len: DAY_LEN }),
   god: v => godmode = v, freeze: v => mobsFrozen = v,
   findOre(id) { for (const ch of chunks.values()) for (let i = 0; i < ch.data.length; i++) if (ch.data[i] === id) { const lx = i % 16, lz = ((i / 16) | 0) % 16, ly = (i / 256) | 0; return { x: ch.cx * 16 + lx, y: ly, z: ch.cz * 16 + lz }; } return null; },
