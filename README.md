@@ -47,6 +47,17 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 - El **agua enfría la lava** y la convierte en piedra.
 - El fuego se puede apagar de un golpe de clic.
 
+## 🌱 Vida y agricultura
+
+- **Barra de vida** (corazones): recibes daño de la lava, el fuego, las caídas grandes y al ahogarte; te recuperas solo con el tiempo si estás a salvo.
+- **Labrar y sembrar**: con la **pala** (clic derecho) conviertes hierba/tierra en *tierra arada*; siembra semillas de **galenas** (hierba para pipa) y **cebada** con clic derecho. Crecen solas con el tiempo; coséchalas con un golpe.
+  - Al romper hierba a veces caen semillas; las galenas crecen silvestres en La Comarca.
+- **Athelas**: planta medicinal verde muy rara de Lothlórien. Úsala desde el inventario para **curarte al instante y limpiar el veneno**.
+- **Pipa** (4 tablones): fúmala con hierba para pipa → humo relajante y **regeneración acelerada**.
+- **Cerveza**: con cebada y tablones fabricas un **Barril**; colócalo y clic derecho para servir jarras. Bébelas para ganar **fuerza** (picas más rápido y corres más).
+- **Mallorn dorado**: planta una nuez de mallorn y crecerá un árbol de madera blanca y **hojas de oro que iluminan la zona de noche**.
+- Tu inventario (tecla **E**) tiene ahora una sección de **Objetos** (cosecha y comida) con botones para usarlos.
+
 ## El mapa de la Tierra Media
 
 Pulsa **M** para ver el mapa con tu posición. Los lugares famosos están construidos en el mundo, dispuestos como en el mapa real (el este queda a +x y el sur a +z):

@@ -9,13 +9,27 @@
   #c { display:block; width:100%; height:100%; }
 
   /* ---------- HUD (solo en partida) ---------- */
-  #crosshair, #biome, #coords, #hotbar, #netinfo, #minimap { display:none; }
+  #crosshair, #biome, #coords, #hotbar, #netinfo, #minimap, #healthbar, #statusfx { display:none; }
   body.ingame #crosshair { display:block; }
   body.ingame #biome    { display:block; }
   body.ingame #coords   { display:block; }
   body.ingame #netinfo  { display:block; }
   body.ingame #hotbar   { display:flex; }
   body.ingame #minimap  { display:block; }
+  body.ingame #healthbar { display:block; }
+  body.ingame #statusfx { display:block; }
+
+  #healthbar {
+    position:fixed; bottom:78px; left:50%; transform:translateX(-50%);
+    pointer-events:none; filter:drop-shadow(0 2px 3px rgba(0,0,0,.7));
+  }
+  /* tintes de estado y destello de daño a pantalla completa */
+  #statusfx { position:fixed; inset:0; pointer-events:none; z-index:5; }
+  #fx-hurt   { position:absolute; inset:0; background:radial-gradient(circle, transparent 45%, rgba(170,0,0,.75)); opacity:0; transition:opacity .12s; }
+  #fx-poison { position:absolute; inset:0; box-shadow:inset 0 0 140px rgba(60,170,40,.65); opacity:0; transition:opacity .5s; }
+  #fx-fire   { position:absolute; inset:0; box-shadow:inset 0 0 160px rgba(230,90,10,.7); opacity:0; transition:opacity .25s; }
+  #fx-buff   { position:fixed; top:200px; right:14px; color:#ffe9a0; font-size:13px; font-family:monospace;
+               text-shadow:0 1px 4px #000; text-align:right; line-height:1.6; }
 
   #minimap {
     position:fixed; top:40px; right:14px; width:150px; height:150px;
@@ -156,6 +170,13 @@
 <div id="coords"></div>
 <div id="netinfo"></div>
 <canvas id="minimap" width="150" height="150"></canvas>
+<canvas id="healthbar" width="230" height="22"></canvas>
+<div id="statusfx">
+  <div id="fx-poison"></div>
+  <div id="fx-fire"></div>
+  <div id="fx-hurt"></div>
+  <div id="fx-buff"></div>
+</div>
 <div id="toast"></div>
 <div id="hotbar"></div>
 
@@ -209,8 +230,10 @@
       <label class="flabel">Huecos del cinturón (teclas 6–9) — elige un hueco y luego un material</label>
       <div id="belt" class="invgrid"></div>
       <button class="mbtn small" id="btn-clearslot">Vaciar hueco elegido</button>
-      <label class="flabel">Materiales recolectados</label>
+      <label class="flabel">Materiales y semillas (clic para asignar al hueco)</label>
       <div id="invgrid" class="invgrid"></div>
+      <label class="flabel">Objetos — cosecha, comida y útiles</label>
+      <div id="objgrid" style="width:100%; display:flex; flex-direction:column; gap:6px;"></div>
       <label class="flabel">Fabricar</label>
       <div id="craft" style="width:100%; display:flex; flex-direction:column; gap:8px;"></div>
       <button class="mbtn small" id="btn-inv-close">▶ Volver al juego (E)</button>
@@ -288,8 +311,27 @@ const B = {
   MITHRIL:13, DBRICK:14, PLANK:15, COBBLE:16, BEDROCK:17,
   CHEST:18, FIRE:19, WSTONE:20,
   DOORX:21, DOORXO:22, DOORZ:23, DOORZO:24,   // puertas: cerrada/abierta × eje
+  FARMLAND:25, PIPEWEEDY:26, PIPEWEEDM:27, BARLEYY:28, BARLEYM:29,
+  ATHELAS:30, MSPROUT:31, MGLOW:32, BARREL:33,
 };
 const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
+// plantas finas (se atraviesan, se rompen de un golpe, se dibujan como aspas)
+const PLANTS = new Set([B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.ATHELAS, B.MSPROUT]);
+const isPlant = id => PLANTS.has(id);
+
+// objetos del inventario que no son bloques (ids ≥ 200)
+const I = {
+  PIPE_LEAF:200, BARLEY_GRAIN:201, PIPE_SEED:202, BARLEY_SEED:203,
+  ATHELAS_LEAF:204, MALLORN_NUT:205, PIPE:206, ALE:207,
+};
+const isItem = id => id >= 200;
+// objetos que se pueden sembrar (item → bloque de cultivo y dónde)
+const PLANTABLE = {
+  [I.PIPE_SEED]:   { plant: B.PIPEWEEDY, on: 'farm' },
+  [I.BARLEY_SEED]: { plant: B.BARLEYY,   on: 'farm' },
+  [I.MALLORN_NUT]: { plant: B.MSPROUT,   on: 'soil' },
+};
+const beltable = id => MATERIALS.includes(id) || PLANTABLE[id] !== undefined;
 const NAMES = {
   [B.GRASS]:'Hierba', [B.DIRT]:'Tierra', [B.STONE]:'Piedra', [B.SNOW]:'Nieve',
   [B.LOG]:'Tronco de roble', [B.LEAVES]:'Hojas de roble', [B.MLOG]:'Tronco de mallorn',
@@ -299,6 +341,13 @@ const NAMES = {
   [B.BEDROCK]:'Roca madre', [B.CHEST]:'Cofre', [B.FIRE]:'Fuego', [B.WSTONE]:'Piedra blanca',
   [B.DOORX]:'Puerta de madera', [B.DOORXO]:'Puerta de madera',
   [B.DOORZ]:'Puerta de madera', [B.DOORZO]:'Puerta de madera',
+  [B.FARMLAND]:'Tierra arada', [B.PIPEWEEDY]:'Galenas (brote)', [B.PIPEWEEDM]:'Galenas',
+  [B.BARLEYY]:'Cebada (brote)', [B.BARLEYM]:'Cebada', [B.ATHELAS]:'Athelas',
+  [B.MSPROUT]:'Brote de mallorn', [B.MGLOW]:'Hojas de mallorn doradas', [B.BARREL]:'Barril de cerveza',
+  [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
+  [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
+  [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
+  [I.PIPE]:'Pipa', [I.ALE]:'Jarra de cerveza',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -312,19 +361,21 @@ const TOOLS = [
 const NMAT = 4;
 // materiales que se pueden tener en el inventario
 const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
-                   B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.CHEST, B.DOORX, B.WATER, B.LAVA];
+                   B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
-                [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX };
+                [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
+                [B.FARMLAND]: B.DIRT, [B.MGLOW]: B.MLEAVES };
 const FLAMMABLE = new Set([B.GRASS, B.LEAVES, B.MLEAVES, B.LOG, B.MLOG, B.PLANK, B.CHEST,
-                           B.DOORX, B.DOORXO, B.DOORZ, B.DOORZO]);
+                           B.DOORX, B.DOORXO, B.DOORZ, B.DOORZO,
+                           B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.MSPROUT, B.BARREL]);
 
 const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3 };
 const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor'];
 
 const isFluid  = id => id === B.WATER || id === B.LAVA;
-const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.DOORXO && id !== B.DOORZO;
-const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || isDoorId(id);
+const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.DOORXO && id !== B.DOORZO && !isPlant(id);
+const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || isDoorId(id) || isPlant(id);
 
 /* ============================================================
    RUIDO (value noise + fBm, determinista)
@@ -477,8 +528,8 @@ const chests = new Map();                      // "x,y,z" -> { id: cantidad }
 
 function addInv(id, n = 1) {
   inv[id] = (inv[id] || 0) + n;
-  // material nuevo → directo al primer hueco libre del cinturón
-  if (!hotbarMats.includes(id)) {
+  // material o semilla nuevos → directos al primer hueco libre del cinturón
+  if (beltable(id) && !hotbarMats.includes(id)) {
     const free = hotbarMats.indexOf(null);
     if (free !== -1) hotbarMats[free] = id;
   }
@@ -500,14 +551,52 @@ function applyChestMsg(k, c) {
   if (openChestKey === k) renderChest();
 }
 
+/* ----- cultivos que crecen con el tiempo (los hace crecer el anfitrión) ----- */
+const nowMs = () => performance.now();
+const crops = new Map();        // "x,y,z" -> { type, t }   t = performance.now() al plantar
+const barrelCool = new Map();   // "x,y,z" -> último uso del barril
+const GROW = { pipeweed: 75000, barley: 80000, mallorn: 100000 };
+const CROP_TYPE = { [B.PIPEWEEDY]: 'pipeweed', [B.BARLEYY]: 'barley', [B.MSPROUT]: 'mallorn' };
+
+function registerCrop(wx, wy, wz, id) {
+  if (isGuest) return;            // el anfitrión lleva el reloj de crecimiento
+  const type = CROP_TYPE[id];
+  if (type) crops.set(wx + ',' + wy + ',' + wz, { type, t: nowMs() });
+}
+function growCrops(now) {
+  if (isGuest) return;
+  for (const [k, c] of crops) {
+    if (now - c.t < GROW[c.type]) continue;
+    const [x, y, z] = k.split(',').map(Number);
+    crops.delete(k);
+    if (worldGetBlock(x, y, z) === B.AIR) continue;          // ya no está
+    if (c.type === 'pipeweed') playerSetBlock(x, y, z, B.PIPEWEEDM);
+    else if (c.type === 'barley') playerSetBlock(x, y, z, B.BARLEYM);
+    else if (c.type === 'mallorn') growMallorn(x, y, z);
+  }
+}
+// el brote de mallorn se convierte en un árbol blanco de hojas doradas que ilumina
+function growMallorn(x, y, z) {
+  playerSetBlock(x, y, z, B.AIR);
+  const h = 6;
+  for (let i = 0; i < h; i++) playerSetBlock(x, y + i, z, B.MLOG);
+  for (let dy = h - 2; dy <= h + 1; dy++)
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) + Math.abs(dy - h) > 3) continue;
+      if (worldGetBlock(x + dx, y + dy, z + dz) === B.AIR) playerSetBlock(x + dx, y + dy, z + dz, B.MGLOW);
+    }
+}
+
 // Edición hecha por el jugador local (o por las reacciones): aplica, registra y propaga
 function playerSetBlock(wx, wy, wz, id) {
   if (wy < 1 || wy >= WH) return;
   const k = wx + ',' + wy + ',' + wz;
   const prev = worldGetBlock(wx, wy, wz);
   if (prev === B.CHEST && id !== B.CHEST && chests.has(k)) { chests.delete(k); broadcastChest(k, null); }
+  if (CROP_TYPE[prev] && id !== prev) crops.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
+  if (CROP_TYPE[id]) registerCrop(wx, wy, wz, id);
   saveDirty = true;
   const msg = { t: 'set', x: wx, y: wy, z: wz, id };
   if (isHost) broadcast(msg);
@@ -520,9 +609,10 @@ function netApplySet(wx, wy, wz, id) {
   const k = wx + ',' + wy + ',' + wz;
   const prev = worldGetBlock(wx, wy, wz);
   if (prev === B.CHEST && id !== B.CHEST) chests.delete(k);
+  if (CROP_TYPE[prev] && id !== prev) crops.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
-  if (isHost) { saveDirty = true; queueReactAround(wx, wy, wz); }
+  if (isHost) { registerCrop(wx, wy, wz, id); saveDirty = true; queueReactAround(wx, wy, wz); }
 }
 
 /* ----- reacciones "realistas": fuego, lava y agua ----- */
@@ -630,6 +720,7 @@ function genChunk(cx, cz) {
 
   genTrees(data, cx, cz);
   genStructures(data, cx, cz);
+  genFlora(data, cx, cz);
 
   // aplicar ediciones guardadas / recibidas
   const em = editsByChunk.get(K(cx, cz));
@@ -643,6 +734,23 @@ function genChunk(cx, cz) {
   dirty.add(K(cx, cz));
   markDirty(cx - 1, cz); markDirty(cx + 1, cz); markDirty(cx, cz - 1); markDirty(cx, cz + 1);
   return ch;
+}
+
+/* ----- flora silvestre: athelas (Lothlórien) y galenas (La Comarca) ----- */
+function genFlora(data, cx, cz) {
+  const baseX = cx * CH, baseZ = cz * CH;
+  for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+    const wx = baseX + lx, wz = baseZ + lz;
+    const biome = biomeAt(wx, wz);
+    if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
+    const ih = heightAt(wx, wz);
+    if (ih <= WATER_Y + 1 || ih >= 27) continue;
+    if (data[IDX(lx, ih, lz)] !== B.GRASS) continue;
+    if (ih + 1 >= WH || data[IDX(lx, ih + 1, lz)] !== B.AIR) continue;
+    const r = hash2(wx, wz, SEED + 31);
+    if (biome === BIOME.LOTHLORIEN) { if (r < 0.006) data[IDX(lx, ih + 1, lz)] = B.ATHELAS; }   // athelas, muy rara
+    else if (r < 0.004) data[IDX(lx, ih + 1, lz)] = B.PIPEWEEDM;                                  // galenas silvestres
+  }
 }
 
 /* ----- árboles ----- */
@@ -886,7 +994,7 @@ function genStructures(data, cx, cz) {
 /* ============================================================
    TEXTURAS (atlas procedural en canvas)
 ============================================================ */
-const T = 16, ACOLS = 8, AROWS = 4;
+const T = 16, ACOLS = 8, AROWS = 6;
 const atlasCanvas = document.createElement('canvas');
 atlasCanvas.width = ACOLS * T; atlasCanvas.height = AROWS * T;
 const actx = atlasCanvas.getContext('2d');
@@ -1035,6 +1143,61 @@ const TILE_PAINTERS = [
     actx.fillRect(ox + 1, oy + 12, 2, 2); actx.fillRect(ox + 13, oy + 12, 2, 2);
     actx.fillRect(ox + 11, oy + 7, 3, 2);                    // tirador
   },
+  /* 24 farmland */ (ox, oy, rng) => {
+    speckle(ox, oy, [96, 64, 38], 0.14, rng);
+    actx.fillStyle = css(58, 38, 22);                        // surcos arados
+    for (let y = 2; y < T; y += 4) actx.fillRect(ox, oy + y, T, 1);
+  },
+  /* 25 pipeweed_young */ (ox, oy, rng) => {                 // aspa transparente: solo el dibujo
+    actx.fillStyle = css(96, 150, 70);
+    for (let i = 0; i < 4; i++) { const x = 5 + i * 2; actx.fillRect(ox + x, oy + 9 - (i & 1), 2, 7); }
+  },
+  /* 26 pipeweed_mature */ (ox, oy, rng) => {
+    actx.fillStyle = css(86, 134, 60);
+    for (let i = 0; i < 5; i++) { const x = 3 + i * 2; actx.fillRect(ox + x, oy + 3 + (i & 1), 2, 13); }
+    actx.fillStyle = css(150, 110, 150);                     // flores moradas (galenas)
+    actx.fillRect(ox + 5, oy + 2, 2, 2); actx.fillRect(ox + 9, oy + 1, 2, 2);
+  },
+  /* 27 barley_young */ (ox, oy, rng) => {
+    actx.fillStyle = css(120, 158, 78);
+    for (let i = 0; i < 5; i++) actx.fillRect(ox + 3 + i * 2, oy + 9, 1, 7);
+  },
+  /* 28 barley_mature */ (ox, oy, rng) => {
+    actx.fillStyle = css(150, 132, 70);
+    for (let i = 0; i < 5; i++) actx.fillRect(ox + 3 + i * 2, oy + 4, 1, 12);
+    actx.fillStyle = css(214, 188, 96);                      // espigas doradas
+    for (let i = 0; i < 5; i++) actx.fillRect(ox + 2 + i * 2, oy + 1, 3, 4);
+  },
+  /* 29 athelas */ (ox, oy, rng) => {
+    actx.fillStyle = css(60, 150, 84);                       // hojas lanceoladas verdes
+    for (let i = 0; i < 6; i++) {
+      const x = 7 + Math.round(Math.cos(i) * 5), y = 4 + (i % 3) * 4;
+      actx.fillRect(ox + x, oy + y, 3, 4);
+    }
+    actx.fillStyle = css(220, 230, 200); actx.fillRect(ox + 7, oy + 6, 2, 2);  // florecilla blanca
+    actx.fillStyle = css(70, 120, 60); actx.fillRect(ox + 7, oy + 9, 2, 6);    // tallo
+  },
+  /* 30 mallorn_sprout */ (ox, oy, rng) => {
+    actx.fillStyle = css(176, 170, 156); actx.fillRect(ox + 7, oy + 7, 2, 8);  // tronquito plateado
+    actx.fillStyle = css(232, 200, 96);                                        // hojas doradas
+    actx.fillRect(ox + 5, oy + 3, 6, 5); actx.fillRect(ox + 4, oy + 5, 8, 3);
+  },
+  /* 31 mallorn_glow */ (ox, oy, rng) => {                   // hojas doradas luminosas (cubo opaco)
+    speckle(ox, oy, [236, 204, 96], 0.12, rng);
+    for (let i = 0; i < 14; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 255, 240, 160);
+  },
+  /* 32 barrel_side */ (ox, oy, rng) => {
+    for (let x = 0; x < T; x++) { const f = 0.8 + rng() * 0.16;
+      for (let y = 0; y < T; y++) px(ox, oy, x, y, 120 * f, 82 * f, 44 * f); }
+    actx.fillStyle = css(60, 60, 66);                        // aros de hierro
+    actx.fillRect(ox, oy + 2, T, 2); actx.fillRect(ox, oy + 7, T, 2); actx.fillRect(ox, oy + 12, T, 2);
+  },
+  /* 33 barrel_top */ (ox, oy, rng) => {
+    speckle(ox, oy, [128, 90, 50], 0.1, rng);
+    actx.fillStyle = css(70, 50, 28);
+    actx.beginPath(); actx.arc(ox + 8, oy + 8, 6, 0, 7); actx.stroke();
+    actx.fillRect(ox + 7, oy + 7, 2, 2);                     // tapón
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1065,6 +1228,15 @@ const TILE_MAP = {
   [B.DOORXO]:  { all: 23 },
   [B.DOORZ]:   { all: 23 },
   [B.DOORZO]:  { all: 23 },
+  [B.FARMLAND]:{ top: 24, bottom: 2, side: 2 },
+  [B.PIPEWEEDY]:{ all: 25 },
+  [B.PIPEWEEDM]:{ all: 26 },
+  [B.BARLEYY]: { all: 27 },
+  [B.BARLEYM]: { all: 28 },
+  [B.ATHELAS]: { all: 29 },
+  [B.MSPROUT]: { all: 30 },
+  [B.MGLOW]:   { all: 31 },
+  [B.BARREL]:  { top: 33, bottom: 33, side: 32 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1101,6 +1273,7 @@ camera.rotation.order = 'YXZ';
 const matSolid = new THREE.MeshLambertMaterial({ map: atlasTex });
 const matWater = new THREE.MeshLambertMaterial({ map: atlasTex, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide });
 const matGlow  = new THREE.MeshBasicMaterial({ map: atlasTex });   // lava: brilla sin luz
+const matPlant = new THREE.MeshLambertMaterial({ map: atlasTex, alphaTest: 0.5, side: THREE.DoubleSide });  // cultivos: aspas con recorte
 
 const dirLight = new THREE.DirectionalLight(0xfff3d8, 2.2);
 scene.add(dirLight); scene.add(dirLight.target);
@@ -1163,6 +1336,7 @@ function buildChunkMesh(ch) {
     solid: { pos: [], nor: [], uv: [], idx: [] },
     water: { pos: [], nor: [], uv: [], idx: [] },
     glow:  { pos: [], nor: [], uv: [], idx: [] },
+    plant: { pos: [], nor: [], uv: [], idx: [] },
   };
   const baseX = ch.cx * CH, baseZ = ch.cz * CH;
   const data = ch.data;
@@ -1175,6 +1349,23 @@ function buildChunkMesh(ch) {
   for (let ly = 0; ly < WH; ly++) for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
     const id = data[IDX(lx, ly, lz)];
     if (!id) continue;
+    if (isPlant(id)) {   // cultivo: dos aspas cruzadas con recorte alfa
+      const tile = tileFor(id, 0);
+      const tx = tile % ACOLS, ty = (tile / ACOLS) | 0;
+      const u0 = (tx + UV_E) / ACOLS, u1 = (tx + 1 - UV_E) / ACOLS;
+      const v0 = ((AROWS - 1 - ty) + UV_E) / AROWS, v1 = ((AROWS - 1 - ty) + 1 - UV_E) / AROWS;
+      const quad = (ax, az, bx, bz) => {
+        const base = buckets.plant.pos.length / 3;
+        buckets.plant.pos.push(lx + ax, ly + 0, lz + az,  lx + bx, ly + 0, lz + bz,
+                               lx + ax, ly + 1, lz + az,  lx + bx, ly + 1, lz + bz);
+        for (let q = 0; q < 4; q++) buckets.plant.nor.push(0, 1, 0);
+        buckets.plant.uv.push(u0, v0, u1, v0, u0, v1, u1, v1);
+        buckets.plant.idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+      };
+      quad(0.15, 0.15, 0.85, 0.85);
+      quad(0.15, 0.85, 0.85, 0.15);
+      continue;
+    }
     const db = DOOR_BOX[id];
     if (db) {   // panel de puerta: las 6 caras de una caja fina, sin ocultación
       const tile = tileFor(id, 0);
@@ -1196,7 +1387,7 @@ function buildChunkMesh(ch) {
       }
       continue;
     }
-    const bucket = id === B.WATER ? buckets.water : (id === B.LAVA || id === B.FIRE) ? buckets.glow : buckets.solid;
+    const bucket = id === B.WATER ? buckets.water : (id === B.LAVA || id === B.FIRE || id === B.MGLOW) ? buckets.glow : buckets.solid;
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const nb = nbAt(lx + face.dir[0], ly + face.dir[1], lz + face.dir[2]);
@@ -1216,8 +1407,8 @@ function buildChunkMesh(ch) {
     }
   }
 
-  const mats = { solid: matSolid, water: matWater, glow: matGlow };
-  for (const name of ['solid', 'glow', 'water']) {
+  const mats = { solid: matSolid, water: matWater, glow: matGlow, plant: matPlant };
+  for (const name of ['solid', 'glow', 'plant', 'water']) {
     const b = buckets[name];
     if (!b.idx.length) continue;
     const g = new THREE.BufferGeometry();
@@ -1292,7 +1483,8 @@ function resetWorld() {
   chunks.clear(); dirty.clear(); editsByChunk.clear();
   genQueue = []; lastPC = null;
   reactQueue.length = 0;
-  clearDrops();
+  crops.clear(); barrelCool.clear();
+  clearDrops(); clearParticles();
   for (const id of [...avatars.keys()]) removeAvatar(id);
 }
 
@@ -1328,7 +1520,8 @@ function moveAxis(axis, amount) {
 function physics(dt) {
   const inFluid = isFluid(blockAtF(player.x, player.y + 0.4, player.z));
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  const speed = inFluid ? 2.8 : sprint ? 7.0 : 4.3;
+  let speed = inFluid ? 2.8 : sprint ? 7.0 : 4.3;
+  if (strengthTimer > 0) speed *= 1.18;
 
   let f = 0, r = 0;
   if (keys.has('KeyW')) f++; if (keys.has('KeyS')) f--;
@@ -1359,12 +1552,25 @@ function physics(dt) {
     moveAxis('z', player.vz * dt / steps);
     moveAxis('y', player.vy * dt / steps);
   }
-  if (player.y < -12) respawn();
+
+  // daño por caída (el agua y la lava amortiguan)
+  if (!player.onGround) { peakY = Math.max(peakY, player.y); wasAir = true; }
+  else {
+    if (wasAir) {
+      const fall = peakY - player.y;
+      if (fall > 3.5 && !inFluid) damage(Math.floor(fall - 3.5), 'fall');
+    }
+    wasAir = false; peakY = player.y;
+  }
+
+  updateStatus(dt);
+  if (player.y < -12) die('void');
 }
 
-function respawn() {
+function respawn() {   // tecla R: vuelta voluntaria a salvo, sin penalización
   player.x = SPAWN.x; player.z = SPAWN.z; player.y = 30;
   player.vx = player.vy = player.vz = 0;
+  peakY = player.y; wasAir = false;
 }
 
 /* ============================================================
@@ -1384,6 +1590,7 @@ function raycast(maxDist, opts = {}) {
   while (t <= maxDist) {
     const id = worldGetBlock(x, y, z);
     if (id !== -1 && (isSolid(id) || id === B.DOORXO || id === B.DOORZO ||
+        (opts.plants !== false && isPlant(id)) ||
         (opts.fire !== false && id === B.FIRE) ||
         (opts.fluids && isFluid(id)))) return { x, y, z, id, face };
     if (tmX < tmY && tmX < tmZ) { x += stepX; t = tmX; tmX += tdX; face = [-stepX, 0, 0]; }
@@ -1407,9 +1614,9 @@ const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
 // golpes necesarios por bloque: cada clic es un golpe
 function hitsFor(id, tool) {
   let base, match;
-  if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW) { base = 2; match = 'shovel'; }
-  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST || isDoorId(id)) { base = 4; match = 'axe'; }
-  else if (id === B.LEAVES || id === B.MLEAVES) { return 1; }
+  if (isPlant(id) || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW) return 1;
+  if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW || id === B.FARMLAND) { base = 2; match = 'shovel'; }
+  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || isDoorId(id)) { base = 4; match = 'axe'; }
   else if (id === B.MITHRIL) { base = 9; match = 'pick'; }
   else { base = 6; match = 'pick'; }   // piedra y similares
   return tool === match ? Math.max(1, Math.round(base / 3)) : base;
@@ -1491,15 +1698,29 @@ function updateDrops(dt, now) {
   }
 }
 
+// lo que da cada cultivo al cosecharlo (van directos al inventario)
+function harvestCrop(id) {
+  const r = Math.random;
+  if (id === B.PIPEWEEDM) { addInv(I.PIPE_LEAF, 1 + (r() < 0.5 ? 1 : 0)); if (r() < 0.5) addInv(I.PIPE_SEED, 1); toast('Cosechas hierba para pipa'); }
+  else if (id === B.PIPEWEEDY) addInv(I.PIPE_SEED, 1);
+  else if (id === B.BARLEYM) { addInv(I.BARLEY_GRAIN, 1 + (r() < 0.5 ? 1 : 0)); if (r() < 0.5) addInv(I.BARLEY_SEED, 1); toast('Cosechas cebada'); }
+  else if (id === B.BARLEYY) addInv(I.BARLEY_SEED, 1);
+  else if (id === B.ATHELAS) { addInv(I.ATHELAS_LEAF, 1); toast('Recoges hojas de athelas'); }
+  else if (id === B.MSPROUT) addInv(I.MALLORN_NUT, 1);
+}
+
 function completeBreak(hit) {
   const k = hit.x + ',' + hit.y + ',' + hit.z;
   const cx = hit.x + 0.5, cy = hit.y + 0.55, cz = hit.z + 0.5;
+  if (isPlant(hit.id)) { harvestCrop(hit.id); playerSetBlock(hit.x, hit.y, hit.z, B.AIR); return; }
   if (hit.id === B.CHEST) {
     const c = chests.get(k);
     if (c) for (const [id, n] of Object.entries(c))
       spawnDrop(cx + (Math.random() - 0.5) * 0.4, cy, cz + (Math.random() - 0.5) * 0.4, +id, n);
     chests.delete(k); broadcastChest(k, null);
   }
+  if (hit.id === B.GRASS && Math.random() < 0.35)            // semillas silvestres
+    addInv(Math.random() < 0.5 ? I.PIPE_SEED : I.BARLEY_SEED, 1);
   const drop = DROPS[hit.id] !== undefined ? DROPS[hit.id] : hit.id;
   if (drop) spawnDrop(cx, cy, cz, drop, 1);
   playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
@@ -1525,7 +1746,11 @@ function swing(now) {
   if (hit.id === B.FIRE) { playerSetBlock(hit.x, hit.y, hit.z, B.AIR); digState = null; return; }  // apagar fuego
   if (hit.id === B.BEDROCK) { digState = null; hideDigbar(); return; }
   const key = hit.x + ',' + hit.y + ',' + hit.z;
-  if (!digState || digState.key !== key) digState = { key, hits: 0, need: hitsFor(hit.id, currentTool()) };
+  if (!digState || digState.key !== key) {
+    let need = hitsFor(hit.id, currentTool());
+    if (strengthTimer > 0) need = Math.max(1, Math.ceil(need / 2));   // la cerveza da fuerza
+    digState = { key, hits: 0, need };
+  }
   digState.hits++;
   if (digState.hits >= digState.need) { completeBreak(hit); digState = null; hideDigbar(); }
   else showDigbar(digState.hits / digState.need);
@@ -1550,11 +1775,29 @@ function toggleDoor(x, y, z) {
   }
 }
 
+function drinkBarrel(k) {
+  const last = barrelCool.get(k) || 0;
+  if (nowMs() - last < 1500) { toast('El barril aún se está rellenando…'); return; }
+  barrelCool.set(k, nowMs());
+  addInv(I.ALE, 1);
+  toast('Sirves una jarra de cerveza  (úsala desde el inventario)');
+}
+
 function tryPlace(initial) {
   const hit = raycast(6, { fire: false });
   if (!hit) return;
   if (isDoorId(hit.id)) { if (initial) toggleDoor(hit.x, hit.y, hit.z); return; }
   if (hit.id === B.CHEST) { if (initial) openChest(hit.x + ',' + hit.y + ',' + hit.z); return; }
+  if (hit.id === B.BARREL) { if (initial) drinkBarrel(hit.x + ',' + hit.y + ',' + hit.z); return; }
+
+  // la pala labra la tierra en tierra arada
+  if (currentTool() === 'shovel') {
+    if ((hit.id === B.GRASS || hit.id === B.DIRT) && hit.face[1] === 1) {
+      playerSetBlock(hit.x, hit.y, hit.z, B.FARMLAND);
+      if (initial) toast('Tierra arada — siembra semillas con clic derecho');
+    }
+    return;
+  }
   if (sel < TOOLS.length) {
     if (initial) toast('Con la ' + TOOLS[sel].name.toLowerCase() + ' no se construye — elige un material (huecos 6–9)');
     return;
@@ -1562,10 +1805,24 @@ function tryPlace(initial) {
   const mat = hotbarMats[sel - TOOLS.length];
   if (mat == null) { if (initial) toast('Hueco vacío — pulsa E y asigna un material'); return; }
   if (!(inv[mat] > 0)) { if (initial) toast('No te queda ' + NAMES[mat]); return; }
+
+  // sembrar semillas / nueces sobre la tierra adecuada
+  const seed = PLANTABLE[mat];
+  if (seed) {
+    if (hit.face[1] !== 1) { if (initial) toast('Siémbralo sobre la cara superior del suelo'); return; }
+    const okSoil = seed.on === 'farm' ? hit.id === B.FARMLAND : (hit.id === B.GRASS || hit.id === B.DIRT || hit.id === B.FARMLAND);
+    if (!okSoil) { if (initial) toast(seed.on === 'farm' ? 'Necesitas tierra arada (pala + clic derecho)' : 'Plántalo en hierba o tierra'); return; }
+    if (worldGetBlock(hit.x, hit.y + 1, hit.z) !== B.AIR) return;
+    removeInv(mat, 1);
+    playerSetBlock(hit.x, hit.y + 1, hit.z, seed.plant);
+    if (initial) toast('Plantado — dale tiempo para crecer');
+    return;
+  }
+
   const px = hit.x + hit.face[0], py = hit.y + hit.face[1], pz = hit.z + hit.face[2];
   const cur = worldGetBlock(px, py, pz);
   if (cur === -1) return;
-  if (cur !== B.AIR && !isFluid(cur) && cur !== B.FIRE) return;
+  if (cur !== B.AIR && !isFluid(cur) && cur !== B.FIRE && !isPlant(cur)) return;
   if (isSolid(mat) && intersectsPlayer(px, py, pz)) return;
   removeInv(mat, 1);
   if (mat === B.CHEST) { chests.set(px + ',' + py + ',' + pz, {}); broadcastChest(px + ',' + py + ',' + pz, {}); }
@@ -1635,6 +1892,153 @@ function updateAvatars(dt) {
     a.group.rotation.y = a.yaw;
     a.head.rotation.x = -a.pitch * 0.7;
   }
+}
+
+/* ============================================================
+   PARTÍCULAS (humo de pipa, destellos de curación)
+============================================================ */
+const particles = [];
+const puffCanvas = document.createElement('canvas'); puffCanvas.width = puffCanvas.height = 32;
+{ const g = puffCanvas.getContext('2d');
+  const grd = g.createRadialGradient(16, 16, 1, 16, 16, 15);
+  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 32, 32); }
+const puffTex = new THREE.CanvasTexture(puffCanvas);
+function spawnPuffs(x, y, z, color, n) {
+  for (let i = 0; i < n; i++) {
+    if (particles.length >= 120) break;
+    const m = new THREE.SpriteMaterial({ map: puffTex, color: new THREE.Color(color), transparent: true, depthWrite: false, fog: false });
+    const sp = new THREE.Sprite(m);
+    sp.position.set(x + (Math.random() - 0.5) * 0.4, y + (Math.random() - 0.3) * 0.3, z + (Math.random() - 0.5) * 0.4);
+    sp.scale.setScalar(0.18 + Math.random() * 0.12);
+    scene.add(sp);
+    particles.push({ sp, vy: 0.5 + Math.random() * 0.4, vx: (Math.random() - 0.5) * 0.3, vz: (Math.random() - 0.5) * 0.3, life: 1.2 + Math.random() * 0.8, max: 2 });
+  }
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { scene.remove(p.sp); p.sp.material.dispose(); particles.splice(i, 1); continue; }
+    p.sp.position.x += p.vx * dt; p.sp.position.y += p.vy * dt; p.sp.position.z += p.vz * dt;
+    p.sp.scale.addScalar(0.4 * dt);
+    p.sp.material.opacity = Math.min(1, p.life);
+  }
+}
+function clearParticles() { while (particles.length) { const p = particles.pop(); scene.remove(p.sp); p.sp.material.dispose(); } }
+
+/* ============================================================
+   VIDA, ESTADOS Y CONSUMIBLES
+============================================================ */
+const HMAX = 20;
+let health = HMAX, lastDamage = -9999;
+let fireTimer = 0, poisonTimer = 0, strengthTimer = 0, regenBuffTimer = 0, pipeSmoke = 0;
+let submerged = 0, peakY = 0, wasAir = false;
+let _regenAcc = 0, _fireAcc = 0, _poisonAcc = 0, _drownAcc = 0, _smokeAcc = 0;
+
+const hbCanvas = $('healthbar'), hbx = hbCanvas.getContext('2d');
+function drawHeart(x, fill) {           // fill: 1 lleno, 0.5 medio, 0 vacío
+  const s = 20, y = 1;
+  hbx.save(); hbx.translate(x, y);
+  const heart = c => { hbx.fillStyle = c;
+    hbx.fillRect(3, 3, 4, 3); hbx.fillRect(13, 3, 4, 3);
+    hbx.fillRect(1, 5, 18, 5); hbx.fillRect(3, 10, 14, 3); hbx.fillRect(6, 13, 8, 2); hbx.fillRect(8, 15, 4, 2); };
+  heart('#3a0a0a');
+  if (fill > 0) {
+    hbx.save();
+    if (fill === 0.5) { hbx.beginPath(); hbx.rect(0, 0, 10, s); hbx.clip(); }
+    heart('#e23b30');
+    hbx.fillStyle = 'rgba(255,255,255,.5)'; hbx.fillRect(4, 5, 3, 2);
+    hbx.restore();
+  }
+  hbx.restore();
+}
+function renderHealth() {
+  hbx.clearRect(0, 0, hbCanvas.width, hbCanvas.height);
+  for (let i = 0; i < 10; i++) {
+    const v = health / 2 - i;
+    drawHeart(i * 22, v >= 1 ? 1 : v >= 0.5 ? 0.5 : 0);
+  }
+}
+function flashHurt() { const e = $('fx-hurt'); e.style.opacity = 0.9; setTimeout(() => e.style.opacity = 0, 120); }
+function damage(amt, cause) {
+  if (health <= 0 || !inWorld) return;
+  health = Math.max(0, health - amt);
+  lastDamage = nowMs();
+  flashHurt(); renderHealth();
+  if (health <= 0) die(cause);
+}
+function heal(amt) { health = Math.min(HMAX, health + amt); renderHealth(); }
+function die(cause) {
+  toast(cause === 'lava' ? 'La lava te ha consumido… despiertas en La Comarca'
+      : cause === 'fall' ? 'Una mala caída… despiertas en La Comarca'
+      : 'Has caído… despiertas a salvo en La Comarca');
+  health = HMAX; fireTimer = poisonTimer = submerged = 0;
+  player.x = SPAWN.x; player.z = SPAWN.z; player.y = 30; player.vx = player.vy = player.vz = 0;
+  renderHealth();
+}
+function poison(seconds) { poisonTimer = Math.max(poisonTimer, seconds); }
+
+function updateStatus(dt) {
+  const feet = blockAtF(player.x, player.y + 0.1, player.z);
+  const body = blockAtF(player.x, player.y + 0.9, player.z);
+  const head = blockAtF(player.x, player.y + 1.5, player.z);
+  const inLava = feet === B.LAVA || body === B.LAVA;
+  const inFire = feet === B.FIRE || body === B.FIRE;
+  const headWater = head === B.WATER;
+  if (headWater || body === B.WATER) fireTimer = 0;
+  else if (inLava) fireTimer = Math.max(fireTimer, 6);
+  else if (inFire) fireTimer = Math.max(fireTimer, 4);
+
+  if (inLava) { _fireAcc += dt; if (_fireAcc >= 0.4) { _fireAcc = 0; damage(3, 'lava'); } }
+  else if (fireTimer > 0) { fireTimer -= dt; _fireAcc += dt; if (_fireAcc >= 0.5) { _fireAcc = 0; damage(1, 'fire'); } }
+  else _fireAcc = 0;
+
+  if (headWater) { submerged += dt; if (submerged > 12) { _drownAcc += dt; if (_drownAcc >= 1) { _drownAcc = 0; damage(1, 'drown'); } } }
+  else { submerged = 0; _drownAcc = 0; }
+
+  if (poisonTimer > 0) { poisonTimer -= dt; _poisonAcc += dt; if (_poisonAcc >= 1.5) { _poisonAcc = 0; if (health > 1) damage(1, 'poison'); } }
+  else _poisonAcc = 0;
+
+  const safe = nowMs() - lastDamage > 4000 && fireTimer <= 0 && poisonTimer <= 0 && !inLava;
+  if (health < HMAX && safe) { _regenAcc += dt; const iv = regenBuffTimer > 0 ? 1.2 : 3.0; if (_regenAcc >= iv) { _regenAcc = 0; heal(1); } }
+  else _regenAcc = 0;
+  if (regenBuffTimer > 0) regenBuffTimer -= dt;
+  if (strengthTimer > 0) strengthTimer -= dt;
+
+  if (pipeSmoke > 0) { pipeSmoke -= dt; _smokeAcc += dt;
+    if (_smokeAcc >= 0.14) { _smokeAcc = 0;
+      camera.getWorldDirection(_dir);
+      spawnPuffs(camera.position.x + _dir.x * 0.5, camera.position.y - 0.25, camera.position.z + _dir.z * 0.5, '#cfcfcf', 1); } }
+
+  $('fx-poison').style.opacity = poisonTimer > 0 ? 0.9 : 0;
+  $('fx-fire').style.opacity = (inLava || fireTimer > 0) ? 0.85 : 0;
+  const buffs = [];
+  if (strengthTimer > 0) buffs.push('💪 Fuerza ' + Math.ceil(strengthTimer) + 's');
+  if (regenBuffTimer > 0) buffs.push('🌿 Sosiego ' + Math.ceil(regenBuffTimer) + 's');
+  if (poisonTimer > 0) buffs.push('☠ Veneno ' + Math.ceil(poisonTimer) + 's');
+  $('fx-buff').innerHTML = buffs.join('<br>');
+}
+
+function consumeAthelas() {
+  if (!(inv[I.ATHELAS_LEAF] > 0)) return;
+  removeInv(I.ATHELAS_LEAF, 1);
+  heal(8); poisonTimer = 0;
+  toast('Las hojas de athelas te reaniman y limpian el veneno');
+  spawnPuffs(player.x, player.y + 1.4, player.z, '#bfe8c0', 8);
+}
+function smokePipe() {
+  if (!(inv[I.PIPE] > 0)) { toast('Necesitas fabricar una pipa'); return; }
+  if (!(inv[I.PIPE_LEAF] > 0)) { toast('No te queda hierba para pipa'); return; }
+  removeInv(I.PIPE_LEAF, 1);
+  regenBuffTimer = 30; pipeSmoke = 3;
+  toast('Una calada relajante… te recuperas más rápido');
+}
+function drinkAle() {
+  if (!(inv[I.ALE] > 0)) return;
+  removeInv(I.ALE, 1);
+  strengthTimer = 45; heal(2);
+  toast('¡La cerveza te da fuerzas! (picas más rápido y corres más)');
 }
 
 /* ============================================================
@@ -1831,12 +2235,15 @@ function saveWorld() {
       return [lx, ly, lz, id];
     });
   }
+  const cropList = [];
+  for (const [k, c] of crops) cropList.push([k, c.type, Math.round(nowMs() - c.t)]);
   lsSet('tm_world_' + currentWorld.id, {
-    dayT,
+    dayT, health,
     player: { x: player.x, y: player.y, z: player.z, yaw, pitch },
     edits,
     inv, hotbarMats,
     chests: Object.fromEntries(chests),
+    crops: cropList,
   });
   currentWorld.last = Date.now();
   const i = worlds.findIndex(w => w.id === currentWorld.id);
@@ -1875,11 +2282,19 @@ function startWorld(meta, data, mode) {
   if (data?.chests) for (const [k, c] of Object.entries(data.chests)) chests.set(k, c);
   if (!data) chests.set('22,22,10', { [B.MITHRIL]: 3 });   // el regalo del agujero hobbit
   const stash = isGuest ? lsGet('tm_ginv_' + SEED, null) : data;
-  inv = Object.assign({}, stash?.inv ?? { [B.PLANK]: 16 });
+  inv = Object.assign({}, stash?.inv ?? { [B.PLANK]: 16, [I.PIPE_SEED]: 3, [I.BARLEY_SEED]: 3 });
   hotbarMats = Array.isArray(stash?.hotbarMats) && stash.hotbarMats.length === NMAT
-    ? [...stash.hotbarMats] : [B.PLANK, null, null, null];
+    ? [...stash.hotbarMats] : [B.PLANK, I.PIPE_SEED, I.BARLEY_SEED, null];
   invOpen = false; openChestKey = null; invSelSlot = 0;
   refreshHotbar();
+
+  // cultivos en crecimiento y vida
+  crops.clear(); barrelCool.clear();
+  if (!isGuest && Array.isArray(data?.crops))
+    for (const [k, type, age] of data.crops) crops.set(k, { type, t: nowMs() - age });
+  health = (typeof data?.health === 'number' && data.health > 0) ? data.health : HMAX;
+  fireTimer = poisonTimer = strengthTimer = regenBuffTimer = pipeSmoke = submerged = 0;
+  renderHealth();
 
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) genChunk(dx, dz);
 
@@ -1889,6 +2304,7 @@ function startWorld(meta, data, mode) {
   player.z = p?.z ?? SPAWN.z;
   player.vx = player.vy = player.vz = 0;
   yaw = p?.yaw ?? -2.36; pitch = p?.pitch ?? -0.05;
+  peakY = player.y; wasAir = false;
 
   inWorld = true; saveDirty = false;
   document.body.classList.add('ingame');
@@ -2069,11 +2485,40 @@ function drawToolIcon(g, key) {
     g.fillStyle = '#5d646b'; g.fillRect(8, 12, 16, 3);
   }
 }
+function drawItemIcon(g, id) {
+  g.clearRect(0, 0, 32, 32);
+  if (id === I.PIPE_LEAF) {
+    g.fillStyle = '#6e7a3a'; g.beginPath(); g.ellipse(16, 16, 11, 6, 0.5, 0, 7); g.fill();
+    g.strokeStyle = '#4a5526'; g.lineWidth = 1; g.beginPath(); g.moveTo(8, 22); g.lineTo(24, 10); g.stroke();
+  } else if (id === I.BARLEY_GRAIN) {
+    g.fillStyle = '#d8b85e'; for (let i = 0; i < 5; i++) g.fillRect(8 + (i % 3) * 5, 9 + ((i / 3) | 0) * 7, 4, 6);
+  } else if (id === I.PIPE_SEED || id === I.BARLEY_SEED) {
+    g.fillStyle = id === I.PIPE_SEED ? '#8a6a3a' : '#caa85a';
+    for (let i = 0; i < 6; i++) { g.beginPath(); g.ellipse(9 + (i % 3) * 7, 12 + ((i / 3) | 0) * 8, 3, 2, 0.6, 0, 7); g.fill(); }
+  } else if (id === I.ATHELAS_LEAF) {
+    g.fillStyle = '#3f9a54'; for (let i = 0; i < 3; i++) { g.beginPath(); g.ellipse(16, 16, 4, 12, i * 1.05, 0, 7); g.fill(); }
+    g.fillStyle = '#dce8c8'; g.beginPath(); g.arc(16, 16, 2, 0, 7); g.fill();
+  } else if (id === I.MALLORN_NUT) {
+    g.fillStyle = '#e8c860'; g.beginPath(); g.ellipse(16, 18, 8, 10, 0, 0, 7); g.fill();
+    g.fillStyle = '#9a7a30'; g.fillRect(11, 6, 10, 5);
+  } else if (id === I.PIPE) {
+    g.strokeStyle = '#7a4a24'; g.lineWidth = 3; g.beginPath(); g.moveTo(6, 14); g.lineTo(18, 16); g.stroke();
+    g.fillStyle = '#5a3418'; g.fillRect(17, 12, 7, 9);
+    g.fillStyle = 'rgba(220,220,220,.7)'; g.beginPath(); g.arc(22, 9, 3, 0, 7); g.arc(26, 5, 2, 0, 7); g.fill();
+  } else if (id === I.ALE) {
+    g.fillStyle = '#caa040'; g.fillRect(9, 12, 12, 15);
+    g.fillStyle = '#f4ead0'; g.fillRect(9, 9, 12, 4);                  // espuma
+    g.strokeStyle = '#9a7a30'; g.lineWidth = 2; g.strokeRect(9, 12, 12, 15);
+    g.strokeStyle = '#caa040'; g.beginPath(); g.arc(23, 18, 4, -1.4, 1.4); g.stroke();   // asa
+  }
+}
 function drawMatIcon(g, id) {
   g.clearRect(0, 0, 32, 32);
   if (id == null) return;
+  if (isItem(id)) { drawItemIcon(g, id); return; }
   g.imageSmoothingEnabled = false;
   const t = TILE_MAP[id];
+  if (!t) return;
   const tile = t.all !== undefined ? t.all : t.side;
   g.drawImage(atlasCanvas, (tile % ACOLS) * T, ((tile / ACOLS) | 0) * T, T, T, 0, 0, 32, 32);
 }
@@ -2152,7 +2597,7 @@ function renderInv() {
   const grid = $('invgrid');
   grid.innerHTML = '';
   let any = false;
-  for (const id of MATERIALS) {
+  for (const id of [...MATERIALS, I.PIPE_SEED, I.BARLEY_SEED, I.MALLORN_NUT]) {
     if (!(inv[id] > 0)) continue;
     any = true;
     grid.appendChild(makeIslot(id, inv[id], () => {
@@ -2163,6 +2608,35 @@ function renderInv() {
   }
   if (!any) grid.innerHTML = '<div class="empty">Aún no tienes materiales — mantén el clic izquierdo sobre un bloque para picarlo.</div>';
 
+  // objetos: cosecha y consumibles, con botón Usar para los que se consumen
+  const objbox = $('objgrid');
+  objbox.innerHTML = '';
+  const consumables = [
+    { id: I.ATHELAS_LEAF, use: () => consumeAthelas() },
+    { id: I.PIPE,         use: () => smokePipe(), label: 'Fumar' },
+    { id: I.ALE,          use: () => drinkAle() },
+  ];
+  const useable = new Map(consumables.map(c => [c.id, c]));
+  let anyObj = false;
+  for (const id of [I.PIPE_LEAF, I.BARLEY_GRAIN, I.ATHELAS_LEAF, I.MALLORN_NUT, I.PIPE, I.ALE]) {
+    if (!(inv[id] > 0)) continue;
+    anyObj = true;
+    const row = document.createElement('div'); row.className = 'craftrow';
+    const ic = makeIslot(id, inv[id], null); ic.style.cursor = 'default';
+    const lbl = document.createElement('span'); lbl.style.flex = '1';
+    lbl.textContent = NAMES[id] + ' ×' + inv[id];
+    row.append(ic, lbl);
+    const c = useable.get(id);
+    if (c) {
+      const btn = document.createElement('button'); btn.className = 'mbtn small';
+      btn.textContent = c.label || 'Usar';
+      btn.onclick = () => { c.use(); renderInv(); };
+      row.append(btn);
+    }
+    objbox.append(row);
+  }
+  if (!anyObj) objbox.innerHTML = '<div class="empty">Cosecha plantas para conseguir objetos.</div>';
+
   const craft = $('craft');
   craft.innerHTML = '';
   const recipes = [
@@ -2172,6 +2646,10 @@ function renderInv() {
       go: () => { removeInv(B.PLANK, 8); addInv(B.CHEST, 1); toast('+1 Cofre  (colócalo y clic derecho para abrirlo)'); } },
     { label: '4 tablones → 1 puerta de madera', can: inv[B.PLANK] >= 4,
       go: () => { removeInv(B.PLANK, 4); addInv(B.DOORX, 1); toast('+1 Puerta  (clic derecho para abrirla y cerrarla)'); } },
+    { label: '4 tablones → 1 pipa', can: inv[B.PLANK] >= 4 && !(inv[I.PIPE] > 0),
+      go: () => { removeInv(B.PLANK, 4); addInv(I.PIPE, 1); toast('+1 Pipa  (fúmala con hierba para pipa)'); } },
+    { label: '3 grano de cebada + 3 tablones → 1 barril de cerveza', can: inv[I.BARLEY_GRAIN] >= 3 && inv[B.PLANK] >= 3,
+      go: () => { removeInv(I.BARLEY_GRAIN, 3); removeInv(B.PLANK, 3); addInv(B.BARREL, 1); toast('+1 Barril  (colócalo; clic derecho para servir cerveza)'); } },
   ];
   for (const r of recipes) {
     const row = document.createElement('div');
@@ -2480,8 +2958,9 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) processReacts(now);
+    if (!isGuest) { processReacts(now); growCrops(now); }
     updateDrops(dt, now);
+    updateParticles(dt);
     updateAvatars(dt);
     updateHUD(now);
     renderMinimap();
@@ -2512,8 +2991,13 @@ window.G = {
   saveNow: saveWorld, exitWorld, hostGame, joinGame,
   inv: () => ({ ...inv }), give(id, n) { addInv(id, n ?? 1); },
   breakAt(x, y, z) { completeBreak({ x, y, z, id: worldGetBlock(x, y, z) }); },
-  openChest, renderInv, showScreen, selectSlot, tryPlace, swing, drops, toggleDoor,
+  openChest, renderInv, showScreen, selectSlot, tryPlace, swing, drops, toggleDoor, B, I,
   reacts: () => reactQueue.length,
+  // vida y agricultura (para pruebas)
+  hp: () => health, hurt: a => damage(a, 'test'), heal, poison, die,
+  status: () => ({ health, fireTimer, poisonTimer, strengthTimer, regenBuffTimer, crops: crops.size }),
+  consumeAthelas, smokePipe, drinkAle,
+  crops, growAll() { for (const c of crops.values()) c.t -= 999999; growCrops(nowMs()); },
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
 };
 </script>
