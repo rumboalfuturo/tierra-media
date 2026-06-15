@@ -32,8 +32,15 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 | E | inventario y fabricación |
 | M | mapa de la Tierra Media |
 | C | ayuda de Gandalf (chat de preguntas) |
+| V | cambiar cámara (1ª / 3ª persona) |
 | R | volver a La Comarca |
 | Esc | menú |
+
+## 🌊 Mundo vivo
+
+- **Días más largos**: el ciclo dura unos 12 minutos y el día ocupa la mayor parte (más tiempo de día que de noche).
+- **Agua y lava que fluyen**: si quitas un bloque al lado de agua o lava, el líquido **fluye hacia el hueco y lo llena**; si quitas la fuente, se vacía. El agua se extiende más lejos que la lava. (Los lagos y mares del mundo son fuentes inagotables.)
+- **Cámara en 3ª persona**: pulsa **V** para verte desde fuera (y volver a 1ª persona).
 
 ## 📜 Ayuda en el juego
 

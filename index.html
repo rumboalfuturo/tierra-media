@@ -230,7 +230,7 @@
     </div>
     <div class="hint">
       W A S D moverte · ESPACIO saltar/nadar · SHIFT correr · clic izq golpear (cada clic, un golpe) · clic der colocar<br>
-      1–5 herramientas · 6–9 materiales · E inventario · M mapa · <b>C ayuda de Gandalf</b> · R volver a La Comarca · ESC menú
+      1–5 herramientas · 6–9 materiales · E inventario · M mapa · C ayuda · <b>V cámara 1ª/3ª persona</b> · R volver a La Comarca · ESC menú
     </div>
   </div>
 
@@ -346,7 +346,7 @@
       <button class="mbtn small" id="btn-copy" style="display:none;">📋 Copiar código</button>
       <button class="mbtn small" id="btn-exit">💾 Guardar y salir al menú</button>
     </div>
-    <div class="hint">W A S D · ESPACIO · SHIFT correr · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · <b>C: ayuda</b> · R: spawn</div>
+    <div class="hint">W A S D · ESPACIO · SHIFT · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · C: ayuda · <b>V: cámara</b> · R: spawn</div>
   </div>
 
 </div>
@@ -717,6 +717,7 @@ function playerSetBlock(wx, wy, wz, id) {
   if (isHost) broadcast(msg);
   else if (isGuest && hostConn && hostConn.open) hostConn.send(msg);
   queueReactAround(wx, wy, wz);
+  scheduleFluidAround(wx, wy, wz);
 }
 // Edición recibida por red
 function netApplySet(wx, wy, wz, id) {
@@ -727,7 +728,7 @@ function netApplySet(wx, wy, wz, id) {
   if (CROP_TYPE[prev] && id !== prev) crops.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
-  if (isHost) { registerCrop(wx, wy, wz, id); saveDirty = true; queueReactAround(wx, wy, wz); }
+  if (isHost) { registerCrop(wx, wy, wz, id); saveDirty = true; queueReactAround(wx, wy, wz); scheduleFluidAround(wx, wy, wz); }
 }
 
 /* ----- reacciones "realistas": fuego, lava y agua ----- */
@@ -796,6 +797,108 @@ function processReacts(now) {
             queueReact(e.x + d[0], e.y + d[1], e.z + d[2], 'burn', 300 + Math.random() * 800, B.AIR);
         }
       }
+    }
+  }
+}
+
+/* ----- fluidos: el agua y la lava fluyen y llenan los huecos (lo lleva el anfitrión) ----- */
+const fluidLvl = new Map();        // "x,y,z" -> nivel 1..MAX (sin entrada = fuente, nivel 0, no se seca)
+const fluidQ = [];                 // { due, x, y, z, k }
+const fluidPending = new Set();    // claves ya en cola (evita duplicados y bucles)
+const FLUID_MAX = { [B.WATER]: 7, [B.LAVA]: 3 };
+const FLUID_DELAY = { [B.WATER]: 90, [B.LAVA]: 320 };   // la lava fluye más despacio
+const HORIZ = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+function scheduleFluid(x, y, z, delay) {
+  if (isGuest || fluidQ.length > 12000) return;
+  const k = x + ',' + y + ',' + z;
+  if (fluidPending.has(k)) return;
+  fluidPending.add(k);
+  fluidQ.push({ due: performance.now() + delay, x, y, z, k });
+}
+function scheduleFluidAround(x, y, z) {
+  if (isGuest) return;
+  scheduleFluid(x, y, z, 60);
+  for (const d of DIRS6) scheduleFluid(x + d[0], y + d[1], z + d[2], 90);
+}
+const fluidChg = new Map();        // "x,y,z" -> { n, t }  (frena oscilaciones para que el simulador asiente)
+function fluidSet(x, y, z, id, level) {
+  if (y < 1 || y >= WH) return;
+  const k = x + ',' + y + ',' + z;
+  if (worldGetBlock(x, y, z) === id) {                  // mismo bloque: solo ajustar el nivel
+    if (id === B.WATER || id === B.LAVA) { if (level > 0) fluidLvl.set(k, level); else fluidLvl.delete(k); }
+    return;
+  }
+  const tn = performance.now();                         // si una celda cambia demasiadas veces seguidas, se congela
+  let cc = fluidChg.get(k);
+  if (!cc || tn - cc.t > 4000) { cc = { n: 0, t: tn }; fluidChg.set(k, cc); }
+  if (cc.n >= 10) return;
+  cc.n++;
+  recordEdit(x, y, z, id);
+  setBlockRaw(x, y, z, id);
+  if ((id === B.WATER || id === B.LAVA) && level > 0) fluidLvl.set(k, level); else fluidLvl.delete(k);
+  saveDirty = true;
+  if (isHost) broadcast({ t: 'set', x, y, z, id });
+  queueReactAround(x, y, z);                            // el agua sigue enfriando la lava, etc.
+  scheduleFluidAround(x, y, z);
+}
+let fluidBurstStart = 0;
+function processFluids(now) {
+  if (isGuest || !inWorld || !fluidQ.length) return;
+  if (!fluidBurstStart) fluidBurstStart = now;
+  let budget = 120;
+  for (let i = 0; i < fluidQ.length && budget > 0;) {
+    const e = fluidQ[i];
+    if (e.due > now) { i++; continue; }
+    fluidQ.splice(i, 1); fluidPending.delete(e.k); budget--;
+    updateFluidCell(e.x, e.y, e.z);
+  }
+  if (!fluidQ.length) { fluidChg.clear(); fluidBurstStart = 0; }
+  else if (now - fluidBurstStart > 9000) {     // un flujo nunca churnea más de 9 s: se detiene y asienta
+    fluidQ.length = 0; fluidPending.clear(); fluidChg.clear(); fluidBurstStart = 0;
+  }
+}
+function updateFluidCell(x, y, z) {
+  const id = worldGetBlock(x, y, z);
+  const k = x + ',' + y + ',' + z;
+  if (id === B.WATER || id === B.LAVA) {
+    const maxL = FLUID_MAX[id];
+    const isSrc = !fluidLvl.has(k);
+    let curL = isSrc ? 0 : fluidLvl.get(k);
+    const fedAbove = worldGetBlock(x, y + 1, z) === id;
+    if (!isSrc) {                                       // ¿sigue alimentado? si no, se seca
+      let minH = 99;
+      if (!fedAbove) for (const [dx, dz] of HORIZ) {
+        const nx = x + dx, nz = z + dz;
+        if (worldGetBlock(nx, y, nz) === id) { const nk = nx + ',' + y + ',' + nz; const nl = fluidLvl.has(nk) ? fluidLvl.get(nk) : 0; if (nl < minH) minH = nl; }
+      }
+      const newL = fedAbove ? 1 : (minH + 1);
+      if (newL > maxL) { fluidSet(x, y, z, B.AIR, 0); return; }     // sin apoyo → se seca
+      if (newL !== curL) {                                          // el cambio de nivel se propaga a los vecinos
+        fluidLvl.set(k, newL);
+        for (const [dx, dz] of HORIZ) scheduleFluid(x + dx, y, z + dz, FLUID_DELAY[id]);
+      }
+      curL = newL;
+    }
+    if (worldGetBlock(x, y - 1, z) === B.AIR) { fluidSet(x, y - 1, z, id, 1); return; }   // cae
+    // se extiende de lado SOLO si es fuente o fluye de lado; el agua que CAE no crea charcos (estabilidad)
+    if (isSrc || !fedAbove) {
+      const spreadLvl = isSrc ? 1 : curL + 1;
+      if (spreadLvl <= maxL) for (const [dx, dz] of HORIZ)
+        if (worldGetBlock(x + dx, y, z + dz) === B.AIR) fluidSet(x + dx, y, z + dz, id, spreadLvl);
+    }
+  } else if (id === B.AIR) {                            // un hueco: ¿entra fluido de un vecino?
+    const above = worldGetBlock(x, y + 1, z);
+    if (above === B.WATER || above === B.LAVA) { fluidSet(x, y, z, above, 1); return; }   // cae dentro
+    for (const [dx, dz] of HORIZ) {
+      const nid = worldGetBlock(x + dx, y, z + dz);
+      if (nid !== B.WATER && nid !== B.LAVA) continue;
+      const nk = (x + dx) + ',' + y + ',' + (z + dz);
+      const nIsSrc = !fluidLvl.has(nk), nL = nIsSrc ? 0 : fluidLvl.get(nk);
+      if (!nIsSrc && worldGetBlock(x + dx, y + 1, z + dz) === nid) continue;   // no tirar de una columna que cae
+      const nCanFall = worldGetBlock(x + dx, y - 1, z + dz) === B.AIR;         // el vecino prefiere caer
+      const spreadLvl = nIsSrc ? 1 : nL + 1;
+      if (!nCanFall && spreadLvl <= FLUID_MAX[nid]) { fluidSet(x, y, z, nid, spreadLvl); return; }
     }
   }
 }
@@ -1764,11 +1867,12 @@ function resetWorld() {
   }
   chunks.clear(); dirty.clear(); editsByChunk.clear();
   genQueue = []; lastPC = null;
-  reactQueue.length = 0;
+  reactQueue.length = 0; fluidQ.length = 0; fluidLvl.clear(); fluidPending.clear(); fluidChg.clear(); fluidBurstStart = 0;
   crops.clear(); barrelCool.clear();
   clearDrops(); clearParticles(); clearMobs();
   if (mountMesh) { scene.remove(mountMesh); mountMesh = null; }
   player.mount = null; chests.delete('@bag');
+  disposeSelfMesh();
   for (const id of [...avatars.keys()]) removeAvatar(id);
 }
 
@@ -1777,6 +1881,27 @@ function resetWorld() {
 ============================================================ */
 const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: false, mount: null };
 let mountMesh = null;
+let camMode = 0, selfMesh = null;   // 0 = primera persona, 1 = tercera persona
+function buildSelfMesh() {
+  const col = new THREE.Color(profile.color || '#4caf50');
+  const g = new THREE.Group();
+  const bm = new THREE.MeshLambertMaterial({ color: col });
+  const hm = new THREE.MeshLambertMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), 0.35) });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.85, 0.3), bm); body.position.y = 0.85;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), hm); head.position.y = 1.55;
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.16), bm); armL.position.set(0.4, 0.9, 0);
+  const armR = armL.clone(true); armR.position.x = -0.4;
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.18), bm); legL.position.set(0.14, 0.35, 0);
+  const legR = legL.clone(true); legR.position.x = -0.14;
+  g.add(body, head, armL, armR, legL, legR);
+  g.userData.head = head;
+  return g;
+}
+function disposeSelfMesh() {
+  if (!selfMesh) return;
+  selfMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  scene.remove(selfMesh); selfMesh = null;
+}
 let yaw = -2.36, pitch = -0.05;
 const PHALF = 0.3, PHEIGHT = 1.8, PEYE = 1.62;
 
@@ -1874,7 +1999,8 @@ function respawn() {   // tecla R: vuelta voluntaria a salvo, sin penalización
 const _dir = new THREE.Vector3();
 function raycast(maxDist, opts = {}) {
   camera.getWorldDirection(_dir);
-  const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
+  // siempre desde los ojos del jugador (no desde la cámara, que en 3ª persona va detrás)
+  const ox = player.x, oy = player.y + PEYE + (player.mount ? 0.45 : 0), oz = player.z;
   let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
   const stepX = _dir.x > 0 ? 1 : -1, stepY = _dir.y > 0 ? 1 : -1, stepZ = _dir.z > 0 ? 1 : -1;
   const tdX = Math.abs(1 / _dir.x), tdY = Math.abs(1 / _dir.y), tdZ = Math.abs(1 / _dir.z);
@@ -2387,7 +2513,9 @@ const MOB_DROP = {
   horse:  () => [], pony: () => [], goat: () => [[I.WOLF_PELT, 1]],
 };
 
-const sunY = () => Math.sin(dayT * Math.PI * 2);
+// el día ocupa el 64% del ciclo (días más largos que las noches)
+const dayAngle = t => t < 0.64 ? (t / 0.64) * Math.PI : Math.PI + ((t - 0.64) / 0.36) * Math.PI;
+const sunY = () => Math.sin(dayAngle(dayT));
 const isNight = () => sunY() < -0.05;
 const isDayTime = () => sunY() > 0.18;
 
@@ -2678,10 +2806,11 @@ function updatePassive(m, dt) {
 
 function entityInCrosshair(maxDist, filter) {
   camera.getWorldDirection(_dir);
+  const ox = player.x, oy = player.y + PEYE + (player.mount ? 0.45 : 0), oz = player.z;
   let best = null, bestDot = 0.5;
   for (const m of mobs.values()) {
     if (filter && !filter(m)) continue;
-    const cx = m.x - camera.position.x, cy = (m.y + 0.7) - camera.position.y, cz = m.z - camera.position.z;
+    const cx = m.x - ox, cy = (m.y + 0.7) - oy, cz = m.z - oz;
     const dist = Math.hypot(cx, cy, cz); if (dist > maxDist) continue;
     const dot = (cx * _dir.x + cy * _dir.y + cz * _dir.z) / dist;
     if (dot > bestDot) { bestDot = dot; best = m; }
@@ -3825,6 +3954,7 @@ document.addEventListener('keydown', e => {
     else if (forgeOpen) { forgeOpen = false; canvas.requestPointerLock(); }
   }
   if (e.code === 'KeyF' && locked && player.mount) dismount();
+  if (e.code === 'KeyV' && locked) { camMode = (camMode + 1) % 2; toast(camMode ? 'Cámara en 3ª persona' : 'Cámara en 1ª persona'); }
   if (e.code === 'KeyM' && inWorld) {
     if (locked) { mapOpen = true; document.exitPointerLock(); }
     else if (mapOpen) { mapOpen = false; canvas.requestPointerLock(); }
@@ -3852,8 +3982,8 @@ document.addEventListener('wheel', e => {
 /* ============================================================
    CICLO DÍA / NOCHE
 ============================================================ */
-let dayT = 0.22;            // 0..1, día completo = 300 s
-const DAY_LEN = 300;
+let dayT = 0.18;            // 0..1, ciclo completo = 12 min (con el día más largo que la noche)
+const DAY_LEN = 720;
 const sunDir = new THREE.Vector3();
 const COL_DAY = new THREE.Color(0x8ab4dd), COL_NIGHT = new THREE.Color(0x0a0e1e);
 const COL_DAWN = new THREE.Color(0xd9854e), COL_MORDOR = new THREE.Color(0x35221d), COL_MARSH = new THREE.Color(0x46503a);
@@ -3862,7 +3992,7 @@ let fogNear = RD * 16 * 0.62, fogFar = RD * 16 * 1.05;
 
 function updateSky(dt, time) {
   dayT = (dayT + dt / DAY_LEN) % 1;
-  const ang = dayT * Math.PI * 2;
+  const ang = dayAngle(dayT);
   sunDir.set(Math.cos(ang), Math.sin(ang), 0.25).normalize();
   const s = sunDir.y;
 
@@ -3918,7 +4048,7 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) { processReacts(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); }
+    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); }
     updateMobs(dt, now);
     if (player.mount && mountMesh) { mountMesh.position.set(player.x, player.y, player.z); mountMesh.rotation.y = yaw; }
     updateDrops(dt, now);
@@ -3927,8 +4057,25 @@ function step(now) {
     updateHUD(now);
     renderMinimap();
   }
-  camera.position.set(player.x, player.y + PEYE + (player.mount ? 0.45 : 0), player.z);
+  const eyeY = player.y + PEYE + (player.mount ? 0.45 : 0);
   camera.rotation.set(pitch, yaw, 0);
+  if (camMode === 1 && inWorld) {                        // tercera persona: cámara detrás, mostrando tu avatar
+    if (!selfMesh) { selfMesh = buildSelfMesh(); scene.add(selfMesh); }
+    selfMesh.visible = true;
+    selfMesh.position.set(player.x, player.y, player.z);
+    selfMesh.rotation.y = yaw;
+    if (selfMesh.userData.head) selfMesh.userData.head.rotation.x = -pitch * 0.55;
+    camera.getWorldDirection(_dir);
+    const back = 4.4;
+    let d = back;
+    for (let t = 0.5; t <= back; t += 0.3) {            // no atravesar paredes
+      if (isSolid(worldGetBlock(Math.floor(player.x - _dir.x * t), Math.floor(eyeY - _dir.y * t), Math.floor(player.z - _dir.z * t)))) { d = Math.max(0.7, t - 0.4); break; }
+    }
+    camera.position.set(player.x - _dir.x * d, eyeY - _dir.y * d, player.z - _dir.z * d);
+  } else {
+    if (selfMesh) selfMesh.visible = false;
+    camera.position.set(player.x, eyeY, player.z);
+  }
 
   updateSky(dt, time);
   if (!document.hidden) renderer.render(scene, camera);
@@ -3974,7 +4121,9 @@ window.G = {
   mount: id => { const m = mobs.get(id); if (m) mountAnimal(m); },
   dismount, mounted: () => player.mount ? player.mount.type : null,
   animals: () => [...mobs.values()].filter(m => m.def.passive).map(m => ({ id: m.id, type: m.type, tame: !!m.tame })),
-  forceRender() { camera.position.set(player.x, player.y + PEYE, player.z); camera.rotation.set(pitch, yaw, 0); renderer.render(scene, camera); },
+  forceRender() { renderer.render(scene, camera); },
+  setCam(m) { camMode = m; }, fluids: () => ({ queue: fluidQ.length, niveles: fluidLvl.size }),
+  setDayRaw(t) { dayT = t; }, dayInfo: () => ({ dayT, sunY: sunY(), noche: isNight(), len: DAY_LEN }),
   god: v => godmode = v, freeze: v => mobsFrozen = v,
   findOre(id) { for (const ch of chunks.values()) for (let i = 0; i < ch.data.length; i++) if (ch.data[i] === id) { const lx = i % 16, lz = ((i / 16) | 0) % 16, ly = (i / 256) | 0; return { x: ch.cx * 16 + lx, y: ly, z: ch.cz * 16 + lz }; } return null; },
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
