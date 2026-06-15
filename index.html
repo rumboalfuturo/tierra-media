@@ -28,6 +28,7 @@
   #fx-hurt   { position:absolute; inset:0; background:radial-gradient(circle, transparent 45%, rgba(170,0,0,.75)); opacity:0; transition:opacity .12s; }
   #fx-poison { position:absolute; inset:0; box-shadow:inset 0 0 140px rgba(60,170,40,.65); opacity:0; transition:opacity .5s; }
   #fx-fire   { position:absolute; inset:0; box-shadow:inset 0 0 160px rgba(230,90,10,.7); opacity:0; transition:opacity .25s; }
+  #fx-fear   { position:absolute; inset:0; background:radial-gradient(circle, transparent 30%, rgba(8,2,16,.92)); opacity:0; transition:opacity .6s; }
   #fx-buff   { position:fixed; top:200px; right:14px; color:#ffe9a0; font-size:13px; font-family:monospace;
                text-shadow:0 1px 4px #000; text-align:right; line-height:1.6; }
 
@@ -180,6 +181,7 @@
 <div id="statusfx">
   <div id="fx-poison"></div>
   <div id="fx-fire"></div>
+  <div id="fx-fear"></div>
   <div id="fx-hurt"></div>
   <div id="fx-buff"></div>
 </div>
@@ -346,6 +348,7 @@ const I = {
   ATHELAS_LEAF:204, MALLORN_NUT:205, PIPE:206, ALE:207,
   IRON_INGOT:208, GOLD_INGOT:209, GOLD_NUGGET:210, SILVER_INGOT:211,
   BIRON_INGOT:212, STEEL_INGOT:213, MITHRIL_INGOT:214,
+  WOLF_PELT:215, SPIDER_SILK:216, URUK_BANNER:217, MORGUL_BLADE:218,
 };
 const isItem = id => id >= 200;
 // objetos que se pueden sembrar (item → bloque de cultivo y dónde)
@@ -376,6 +379,8 @@ const NAMES = {
   [I.IRON_INGOT]:'Lingote de hierro', [I.GOLD_INGOT]:'Lingote de oro', [I.GOLD_NUGGET]:'Pepita de oro',
   [I.SILVER_INGOT]:'Lingote de plata élfica', [I.BIRON_INGOT]:'Lingote de hierro negro',
   [I.STEEL_INGOT]:'Acero de Gondor', [I.MITHRIL_INGOT]:'Lingote de mithril',
+  [I.WOLF_PELT]:'Piel de huargo', [I.SPIDER_SILK]:'Telaraña élfica',
+  [I.URUK_BANNER]:'Estandarte de la Mano Blanca', [I.MORGUL_BLADE]:'Hoja de Morgul',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -409,8 +414,10 @@ const ARMOR = {
   mithril:   { red:0.55, slow:-0.12, fireproof:true  },   // ligera como pluma, inmune al fuego
 };
 const NAME_TIER   = { base:'piedra', none:'—', iron:'hierro', steel:'acero', silver:'plata', blackiron:'hierro negro', mithril:'mithril' };
-const WEAPON_DMG  = { none:1, iron:3, steel:5, silver:4, blackiron:6, mithril:7 };
-const WEAPON_NAME = { none:'puños', iron:'espada de hierro', steel:'espada de Gondor', silver:'daga élfica', blackiron:'cimitarra negra', mithril:'espada de mithril' };
+const WEAPON_DMG  = { none:1, iron:3, steel:5, silver:4, blackiron:6, mithril:7, morgul:9 };
+const WEAPON_NAME = { none:'puños', iron:'espada de hierro', steel:'espada de Gondor', silver:'daga élfica', blackiron:'cimitarra negra', mithril:'espada de mithril', morgul:'hoja de Morgul' };
+// la daga élfica (plata) y la hoja de Morgul golpean más fuerte a ciertos enemigos
+const WEAPON_BONUS = { silver:{ spider:2, orc:1, uruk:1 }, morgul:{ orc:2, uruk:2, nazgul:2, spider:2 } };
 
 const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3 };
 const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor'];
@@ -1580,7 +1587,7 @@ function resetWorld() {
   genQueue = []; lastPC = null;
   reactQueue.length = 0;
   crops.clear(); barrelCool.clear();
-  clearDrops(); clearParticles();
+  clearDrops(); clearParticles(); clearMobs();
   for (const id of [...avatars.keys()]) removeAvatar(id);
 }
 
@@ -1618,6 +1625,7 @@ function physics(dt) {
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
   let speed = inFluid ? 2.8 : sprint ? 7.0 : 4.3;
   if (strengthTimer > 0) speed *= 1.18;
+  if (fearTimer > 0) speed *= 0.55;          // el grito del Nazgûl paraliza de miedo
   speed *= 1 - ARMOR[armorTier].slow;        // el hierro negro pesa; el mithril aligera
 
   let f = 0, r = 0;
@@ -1827,6 +1835,8 @@ function completeBreak(hit) {
 let lastSwing = 0;
 function swing(now) {
   lastSwing = now;
+  const mob = mobInCrosshair();        // golpear enemigos tiene prioridad sobre picar
+  if (mob) { digState = null; hideDigbar(); playerHitMob(mob); return; }
   if (currentTool() === 'bucket') {
     digState = null; hideDigbar();
     const hit = raycast(6, { fluids: true, fire: false });
@@ -2034,7 +2044,7 @@ function clearParticles() { while (particles.length) { const p = particles.pop()
 ============================================================ */
 const HMAX = 20;
 let health = HMAX, lastDamage = -9999;
-let fireTimer = 0, poisonTimer = 0, strengthTimer = 0, regenBuffTimer = 0, pipeSmoke = 0;
+let fireTimer = 0, poisonTimer = 0, strengthTimer = 0, regenBuffTimer = 0, pipeSmoke = 0, fearTimer = 0;
 // metalurgia equipada (por jugador, local)
 let toolTier = { pick: 'base', shovel: 'base', axe: 'base' };
 let armorTier = 'none', weaponTier = 'none';
@@ -2068,7 +2078,7 @@ function renderHealth() {
 }
 function flashHurt() { const e = $('fx-hurt'); e.style.opacity = 0.9; setTimeout(() => e.style.opacity = 0, 120); }
 function damage(amt, cause) {
-  if (health <= 0 || !inWorld) return;
+  if (health <= 0 || !inWorld || godmode) return;
   const a = ARMOR[armorTier];
   if (a.fireproof && (cause === 'lava' || cause === 'fire')) return;        // mithril: inmune al fuego y la lava
   if (cause === 'lava' || cause === 'fire' || cause === 'fall' || cause === 'mob')
@@ -2116,6 +2126,8 @@ function updateStatus(dt) {
   else _regenAcc = 0;
   if (regenBuffTimer > 0) regenBuffTimer -= dt;
   if (strengthTimer > 0) strengthTimer -= dt;
+  if (fearTimer > 0) fearTimer -= dt;
+  $('fx-fear').style.opacity = fearTimer > 0 ? (0.55 + 0.35 * Math.sin(nowMs() / 120)) : 0;
 
   if (pipeSmoke > 0) { pipeSmoke -= dt; _smokeAcc += dt;
     if (_smokeAcc >= 0.14) { _smokeAcc = 0;
@@ -2153,6 +2165,275 @@ function drinkAle() {
   strengthTimer = 45; heal(2);
   toast('¡La cerveza te da fuerzas! (picas más rápido y corres más)');
 }
+function fear(seconds) { fearTimer = Math.max(fearTimer, seconds); }
+
+/* ============================================================
+   CRIATURAS Y ENEMIGOS
+============================================================ */
+const mobs = new Map();          // id -> mob
+let mobSeq = 0, lastMelee = 0, lastSpawn = 0, nightWarned = false;
+let godmode = false, mobsFrozen = false;   // solo para pruebas/capturas
+const MOB_CAP = 10;
+
+const MOB = {
+  orc:    { name:'Orco',               hp:14, dmg:3, speed:3.0, aggro:15, reach:1.7, scale:1.00, body:0x4d5a3a, head:0x70804f },
+  uruk:   { name:'Uruk-hai',           hp:26, dmg:5, speed:3.4, aggro:17, reach:1.8, scale:1.25, body:0x23231f, head:0x33332c },
+  spider: { name:'Araña de Mirkwood',  hp:12, dmg:2, speed:4.8, aggro:13, reach:1.6, scale:1.00, body:0x241826, head:0x241826, shape:'spider', poison:true },
+  nazgul: { name:'Nazgûl',             hp:46, dmg:6, speed:3.4, aggro:24, reach:1.9, scale:1.35, body:0x0b0b14, head:0x0b0b14, shape:'wraith', fear:true, boss:true },
+};
+const MOB_DROP = {
+  orc:    () => { const o = [[B.BIRONORE, 1 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.5) o.push([I.WOLF_PELT, 1]); return o; },
+  uruk:   () => { const o = [[B.BIRONORE, 2 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.6) o.push([I.URUK_BANNER, 1]); return o; },
+  spider: () => [[I.SPIDER_SILK, 1 + (Math.random() < 0.5 ? 1 : 0)]],
+  nazgul: () => [[I.MORGUL_BLADE, 1], [I.GOLD_INGOT, 2]],
+};
+
+const sunY = () => Math.sin(dayT * Math.PI * 2);
+const isNight = () => sunY() < -0.05;
+const isDayTime = () => sunY() > 0.18;
+
+function createMobMesh(type) {
+  const def = MOB[type], sc = def.scale, g = new THREE.Group();
+  const bm = new THREE.MeshLambertMaterial({ color: def.body });
+  const hm = new THREE.MeshLambertMaterial({ color: def.head });
+  const mats = [bm, hm];
+  const limbs = {};
+  if (def.shape === 'spider') {
+    const ab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.85), bm); ab.position.set(0, 0.45, 0.3);
+    const ce = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.46), hm); ce.position.set(0, 0.42, -0.32);
+    g.add(ab, ce);
+    for (let s = -1; s <= 1; s += 2) for (let l = 0; l < 3; l++) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.07, 0.07), bm);
+      leg.position.set(s * 0.42, 0.42, -0.15 + l * 0.32); leg.rotation.z = s * 0.55; g.add(leg);
+    }
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.05), new THREE.MeshBasicMaterial({ color: 0xff2424 }));
+    eye.position.set(0, 0.5, -0.56); g.add(eye);
+  } else {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5 * sc, 0.85 * sc, 0.3 * sc), bm); body.position.y = 0.85 * sc;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.48 * sc, 0.48 * sc, 0.48 * sc), hm); head.position.y = 1.52 * sc;
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18 * sc, 0.72 * sc, 0.18 * sc), bm); legL.position.set(0.13 * sc, 0.36 * sc, 0);
+    const legR = legL.clone(true); legR.position.x = -0.13 * sc;
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.16 * sc, 0.72 * sc, 0.16 * sc), bm); armL.position.set(0.4 * sc, 0.95 * sc, 0);
+    const armR = armL.clone(true); armR.position.x = -0.4 * sc;
+    g.add(body, head, legL, legR, armL, armR);
+    limbs.legL = legL; limbs.legR = legR; limbs.armR = armR;
+    if (type === 'nazgul') { for (const m of [bm, hm]) { m.transparent = true; m.opacity = 0.86; }
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5 * sc, 0.06, 0.05), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
+      eye.position.set(0, 1.52 * sc, 0.25 * sc); g.add(eye); }
+    if (type === 'orc' || type === 'uruk') {
+      const wm = new THREE.MeshLambertMaterial({ color: 0x9a9aa0 });
+      const wpn = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8 * sc, 0.08), wm); wpn.position.set(-0.42 * sc, 0.75 * sc, 0.2); g.add(wpn); mats.push(wm);
+    }
+  }
+  return { group: g, mats, limbs };
+}
+
+function spawnMob(type, x, y, z, id) {
+  if (!MOB[type]) return null;
+  id = id || ('m' + (++mobSeq));
+  const { group, mats, limbs } = createMobMesh(type);
+  group.position.set(x, y, z);
+  scene.add(group);
+  const def = MOB[type];
+  const m = { id, type, def, x, y, z, vx: 0, vy: 0, vz: 0, yaw: 0, hp: def.hp, mh: def.hp,
+              onGround: false, atkCd: 0, hurtT: 0, wander: 0, wyaw: 0, anim: 0,
+              tx: x, ty: y, tz: z, tyaw: 0, group, mats, limbs };
+  mobs.set(id, m);
+  return m;
+}
+function removeMob(id) {
+  const m = mobs.get(id); if (!m) return;
+  m.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); });
+  scene.remove(m.group); mobs.delete(id);
+}
+function clearMobs() { for (const id of [...mobs.keys()]) removeMob(id); }
+
+function nearestPlayer(x, z) {
+  let best = { id: 'self', x: player.x, y: player.y, z: player.z, d: (player.x - x) ** 2 + (player.z - z) ** 2 };
+  for (const [aid, a] of avatars) { const d = (a.t.x - x) ** 2 + (a.t.z - z) ** 2; if (d < best.d) best = { id: aid, x: a.t.x, y: a.t.y, z: a.t.z, d }; }
+  return best;
+}
+
+function mobMove(m, dt) {
+  const half = 0.34 * m.def.scale, h = (m.def.shape === 'spider' ? 0.6 : 1.5 * m.def.scale);
+  const axis = (ax, amt) => {
+    if (!amt) return; m[ax] += amt;
+    const minX = Math.floor(m.x - half), maxX = Math.floor(m.x + half);
+    const minY = Math.floor(m.y), maxY = Math.floor(m.y + h);
+    const minZ = Math.floor(m.z - half), maxZ = Math.floor(m.z + half);
+    for (let by = minY; by <= maxY; by++) for (let bz = minZ; bz <= maxZ; bz++) for (let bx = minX; bx <= maxX; bx++) {
+      const id = worldGetBlock(bx, by, bz); if (!(id === -1 || isSolid(id))) continue;
+      if (ax === 'x') { m.x = amt > 0 ? bx - half - 1e-3 : bx + 1 + half + 1e-3; m.vx = 0; }
+      else if (ax === 'z') { m.z = amt > 0 ? bz - half - 1e-3 : bz + 1 + half + 1e-3; m.vz = 0; }
+      else { if (amt > 0) m.y = by - h - 1e-3; else { m.y = by + 1 + 1e-3; m.onGround = true; } m.vy = 0; }
+      return;
+    }
+  };
+  m.onGround = false;
+  axis('x', m.vx * dt); axis('z', m.vz * dt); axis('y', m.vy * dt);
+}
+
+// el mob golpea a un jugador (np = {id,x,y,z})
+function mobAttack(m, np) {
+  m.anim = 0.25;
+  if (np.id === 'self') {
+    damage(m.def.dmg, 'mob');
+    if (m.def.poison) poison(6);
+    if (m.def.fear) { fear(4); if (Math.random() < 0.3) toast('Un grito gélido te hiela la sangre…'); }
+  } else {
+    const g = conns.get(np.id);
+    if (g && g.conn.open) g.conn.send({ t: 'hurt', amt: m.def.dmg, cause: 'mob', poison: !!m.def.poison, fear: !!m.def.fear });
+  }
+}
+
+// daño a un mob (byId: 'self' jugador local, o peerId de un invitado, o null = entorno)
+function hitMobBy(m, dmg, byId, fromX, fromZ) {
+  m.hp -= dmg; m.hurtT = 0.22;
+  const ax = m.x - (fromX ?? player.x), az = m.z - (fromZ ?? player.z), d = Math.hypot(ax, az) || 1;
+  m.vx += ax / d * 5; m.vz += az / d * 5; m.vy = Math.max(m.vy, 3);
+  if (m.hp <= 0) killMob(m, byId || 'self');
+}
+function giveLootTo(targetId, items) {
+  if (targetId === 'self') {
+    for (const [id, n] of items) addInv(id, n);
+    toast('Botín: ' + items.map(([id, n]) => n + '× ' + NAMES[id]).join(', '));
+  } else { const g = conns.get(targetId); if (g && g.conn.open) g.conn.send({ t: 'mobloot', items }); }
+}
+function killMob(m, killerId) {
+  const items = MOB_DROP[m.type]();
+  let target = (killerId === 'self' || avatars.has(killerId)) ? killerId : nearestPlayer(m.x, m.z).id;
+  giveLootTo(target, items);
+  spawnPuffs(m.x, m.y + 0.6, m.z, m.type === 'nazgul' ? '#7a3ac0' : '#7a1f1f', 12);
+  if (m.type === 'nazgul') toast('¡Has abatido a un Nazgûl! Cae una Hoja de Morgul');
+  removeMob(m.id);
+}
+
+// el jugador local golpea con clic izquierdo a un mob que tenga en el punto de mira
+function mobInCrosshair() {
+  camera.getWorldDirection(_dir);
+  let best = null, bestDot = 0.55;
+  for (const m of mobs.values()) {
+    const cx = m.x - camera.position.x, cy = (m.y + 0.8) - camera.position.y, cz = m.z - camera.position.z;
+    const dist = Math.hypot(cx, cy, cz); if (dist > 3.6) continue;
+    const dot = (cx * _dir.x + cy * _dir.y + cz * _dir.z) / dist;
+    if (dot > bestDot) { bestDot = dot; best = m; }
+  }
+  return best;
+}
+function playerHitMob(m) {
+  if (nowMs() - lastMelee < 380) return true;
+  lastMelee = nowMs();
+  const dmg = weaponDamage() + ((WEAPON_BONUS[weaponTier] || {})[m.type] || 0);
+  spawnPuffs(m.x, m.y + 0.9, m.z, '#d23030', 3);
+  if (isGuest) { if (hostConn && hostConn.open) hostConn.send({ t: 'mobhit', id: m.id, dmg }); m.hurtT = 0.22; }
+  else hitMobBy(m, dmg, 'self');
+  return true;
+}
+
+function updateMobs(dt, now) {
+  if (isGuest) {                       // invitado: solo interpola lo que envía el anfitrión
+    const k = 1 - Math.exp(-12 * dt);
+    for (const m of mobs.values()) {
+      m.group.position.x += (m.tx - m.group.position.x) * k;
+      m.group.position.y += (m.ty - m.group.position.y) * k;
+      m.group.position.z += (m.tz - m.group.position.z) * k;
+      m.group.rotation.y = m.tyaw;
+      flashMob(m, dt);
+    }
+    return;
+  }
+  for (const m of mobs.values()) {
+    if (mobsFrozen) { const dx = player.x - m.x, dz = player.z - m.z;
+      m.group.position.set(m.x, m.y, m.z); m.group.rotation.y = Math.atan2(-dx, -dz); flashMob(m, dt); continue; }
+    const def = m.def;
+    const np = nearestPlayer(m.x, m.z);
+    const dx = np.x - m.x, dz = np.z - m.z, dist = Math.hypot(dx, dz);
+    let mvx = 0, mvz = 0, moving = false;
+    if (dist < def.aggro) {
+      m.yaw = Math.atan2(-dx, -dz);
+      if (dist > def.reach) { mvx = dx / dist; mvz = dz / dist; moving = true;
+        if (m.onGround && Math.abs(m.vx) < 0.06 && Math.abs(m.vz) < 0.06) m.vy = 6.6; }   // saltar obstáculo
+      else if (m.atkCd <= 0) { m.atkCd = 1.0; mobAttack(m, np); }
+    } else {
+      m.wander -= dt; if (m.wander <= 0) { m.wander = 2 + Math.random() * 3; m.wyaw = Math.random() * 6.283; }
+      mvx = -Math.sin(m.wyaw); mvz = -Math.cos(m.wyaw); m.yaw = m.wyaw; moving = true;
+      mvx *= 0.4; mvz *= 0.4;
+    }
+    const k = 1 - Math.exp(-10 * dt);
+    m.vx += (mvx * def.speed - m.vx) * k;
+    m.vz += (mvz * def.speed - m.vz) * k;
+    m.vy -= 22 * dt; if (m.vy < -40) m.vy = -40;
+    mobMove(m, dt);
+    if (m.atkCd > 0) m.atkCd -= dt;
+
+    const feet = blockAtF(m.x, m.y + 0.1, m.z);
+    if (feet === B.LAVA) m.hp -= 6 * dt + 0.2;
+    if (m.y < -8) m.hp = 0;
+    if (m.hp <= 0) { killMob(m, null); continue; }
+    if (np.d > 72 * 72) { removeMob(m.id); continue; }                    // demasiado lejos
+    const surface = biomeAt(Math.floor(m.x), Math.floor(m.z)) !== BIOME.MORDOR;
+    if (surface && isDayTime() && m.type !== 'nazgul' && Math.random() < 0.03) { removeMob(m.id); continue; }  // amanece
+
+    // animación
+    m.anim += dt * (moving ? 9 : 2);
+    const bob = Math.sin(m.anim) * (moving ? 0.06 : 0.02);
+    m.group.position.set(m.x, m.y + bob, m.z);
+    m.group.rotation.y = m.yaw;
+    if (m.limbs.legL) { const sw = Math.sin(m.anim) * (moving ? 0.6 : 0.05); m.limbs.legL.rotation.x = sw; m.limbs.legR.rotation.x = -sw;
+      if (m.limbs.armR) m.limbs.armR.rotation.x = -sw * 0.7 - (m.anim % 6.28 < 0.3 ? 0 : 0); }
+    flashMob(m, dt);
+  }
+}
+function flashMob(m, dt) {
+  const e = m.hurtT > 0 ? 1 : 0;
+  for (const mat of m.mats) if (mat.emissive) mat.emissive.setRGB(e * 0.6, 0, 0);
+  if (m.hurtT > 0) m.hurtT -= dt;
+}
+
+function trySpawn(now) {
+  if (isGuest || !inWorld || godmode || mobsFrozen || mobs.size >= MOB_CAP) return;
+  if (now - lastSpawn < 1400) return;
+  lastSpawn = now;
+  const night = isNight();
+  const anchors = [{ x: player.x, z: player.z }];
+  for (const a of avatars.values()) anchors.push({ x: a.t.x, z: a.t.z });
+  const anc = anchors[(Math.random() * anchors.length) | 0];
+  const ang = Math.random() * 6.283, r = 20 + Math.random() * 14;
+  const sx = Math.round(anc.x + Math.cos(ang) * r), sz = Math.round(anc.z + Math.sin(ang) * r);
+  let gy = -1;
+  for (let y = WH - 3; y > 2; y--) {
+    if (isSolid(worldGetBlock(sx, y, sz)) && worldGetBlock(sx, y + 1, sz) === B.AIR && worldGetBlock(sx, y + 2, sz) === B.AIR) { gy = y + 1; break; }
+  }
+  if (gy < 0) return;
+  const biome = biomeAt(sx, sz);
+  let type = null;
+  if (biome === BIOME.MORDOR) type = Math.random() < 0.3 ? 'uruk' : 'orc';                 // Mordor: siempre
+  else if (!night) return;                                                                  // de día, solo en Mordor
+  else if (Math.hypot(sx - ISEN.x, sz - ISEN.z) < 50) type = Math.random() < 0.5 ? 'uruk' : 'orc';
+  else if (biome === BIOME.LOTHLORIEN) type = Math.random() < 0.6 ? 'spider' : 'orc';
+  else type = Math.random() < 0.18 ? 'spider' : 'orc';
+  if (night && sunY() < -0.6 && Math.random() < 0.05 && ![...mobs.values()].some(m => m.type === 'nazgul')) type = 'nazgul';
+  spawnMob(type, sx + 0.5, gy, sz + 0.5);
+}
+
+// invitado: reconcilia la lista de mobs que envía el anfitrión
+function applyMobSnapshot(list) {
+  const seen = new Set();
+  for (const e of list) {
+    seen.add(e.id);
+    let m = mobs.get(e.id);
+    if (!m) m = spawnMob(e.ty, e.x, e.y, e.z, e.id);
+    if (!m) continue;
+    if (e.hp < m.hp) m.hurtT = 0.22;
+    m.tx = e.x; m.ty = e.y; m.tz = e.z; m.tyaw = e.yaw; m.hp = e.hp; m.mh = e.mh;
+  }
+  for (const id of [...mobs.keys()]) if (!seen.has(id)) removeMob(id);
+}
+function mobSnapshot() {
+  const list = [];
+  for (const m of mobs.values()) list.push({ id: m.id, ty: m.type, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), yaw: +m.yaw.toFixed(2), hp: m.hp, mh: m.mh });
+  return list;
+}
 
 /* ============================================================
    RED (PeerJS — P2P con código de sala)
@@ -2170,6 +2451,7 @@ function netTickStart() {
   netTimer = setInterval(() => {
     if (isHost && conns.size) {
       broadcast({ t: 'ppos', id: 'H', x: player.x, y: player.y, z: player.z, yaw, pitch });
+      if (mobs.size) broadcast({ t: 'mobs', list: mobSnapshot() });
       if (++dayTick % 50 === 0) broadcast({ t: 'day', dayT });
     } else if (isGuest && hostConn && hostConn.open) {
       hostConn.send({ t: 'pos', x: player.x, y: player.y, z: player.z, yaw, pitch });
@@ -2238,6 +2520,9 @@ function onHostData(conn, m) {
     applyChestMsg(m.k, m.c);
     broadcast({ t: 'chest', k: m.k, c: m.c }, conn.peer);
     saveDirty = true;
+  } else if (m.t === 'mobhit') {
+    const mob = mobs.get(m.id);
+    if (mob) { const a = avatars.get(conn.peer); hitMobBy(mob, m.dmg || 1, conn.peer, a ? a.t.x : mob.x, a ? a.t.z : mob.z); }
   }
 }
 
@@ -2308,6 +2593,15 @@ function onGuestData(m, code) {
     if (a) { toast(a.name + ' ha salido de la partida'); removeAvatar(m.id); updateNetInfo(); }
   } else if (m.t === 'chest') {
     applyChestMsg(m.k, m.c);
+  } else if (m.t === 'mobs') {
+    applyMobSnapshot(m.list);
+  } else if (m.t === 'hurt') {
+    damage(m.amt, m.cause || 'mob');
+    if (m.poison) poison(6);
+    if (m.fear) fear(4);
+  } else if (m.t === 'mobloot') {
+    for (const [id, n] of m.items) addInv(id, n);
+    toast('Botín: ' + m.items.map(([id, n]) => n + '× ' + NAMES[id]).join(', '));
   } else if (m.t === 'day') {
     dayT = m.dayT;
   }
@@ -2407,7 +2701,8 @@ function startWorld(meta, data, mode) {
   if (!isGuest && Array.isArray(data?.crops))
     for (const [k, type, age] of data.crops) crops.set(k, { type, t: nowMs() - age });
   health = (typeof data?.health === 'number' && data.health > 0) ? data.health : HMAX;
-  fireTimer = poisonTimer = strengthTimer = regenBuffTimer = pipeSmoke = submerged = 0;
+  fireTimer = poisonTimer = strengthTimer = regenBuffTimer = pipeSmoke = submerged = fearTimer = 0;
+  lastSpawn = nowMs(); nightWarned = false;
   renderHealth();
 
   // equipo de metalurgia
@@ -2645,6 +2940,22 @@ function drawItemIcon(g, id) {
     g.beginPath(); g.moveTo(7, 22); g.lineTo(25, 22); g.lineTo(22, 12); g.lineTo(10, 12); g.closePath(); g.fill();
     g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(11, 13, 9, 2);
     g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = 1; g.stroke();
+  } else if (id === I.WOLF_PELT) {
+    g.fillStyle = '#6b5440'; g.beginPath(); g.moveTo(8, 8); g.lineTo(24, 10); g.lineTo(22, 24); g.lineTo(9, 22); g.closePath(); g.fill();
+    g.fillStyle = '#4f3d2c'; for (let i = 0; i < 5; i++) g.fillRect(10 + i * 3, 11 + (i % 2) * 6, 2, 4);
+  } else if (id === I.SPIDER_SILK) {
+    g.strokeStyle = '#dfe6ea'; g.lineWidth = 1;
+    for (let i = 0; i < 5; i++) { g.beginPath(); g.moveTo(16, 16); g.lineTo(16 + Math.cos(i * 1.26) * 12, 16 + Math.sin(i * 1.26) * 12); g.stroke(); }
+    for (let r = 4; r <= 11; r += 4) { g.beginPath(); g.arc(16, 16, r, 0, 7); g.stroke(); }
+  } else if (id === I.URUK_BANNER) {
+    g.fillStyle = '#1c1c1c'; g.fillRect(9, 6, 13, 18);
+    g.fillStyle = '#e8e8e8'; g.beginPath(); g.moveTo(15, 9); g.lineTo(13, 16); g.lineTo(15, 15); g.lineTo(14, 20);
+    g.lineTo(18, 13); g.lineTo(16, 14); g.closePath(); g.fill();                  // mano blanca estilizada
+    g.strokeStyle = '#7a5a30'; g.lineWidth = 2; g.beginPath(); g.moveTo(8, 5); g.lineTo(8, 27); g.stroke();
+  } else if (id === I.MORGUL_BLADE) {
+    g.strokeStyle = '#9fdfe0'; g.lineWidth = 3; g.beginPath(); g.moveTo(8, 25); g.lineTo(22, 7); g.stroke();   // hoja pálida
+    g.strokeStyle = '#3a2a4a'; g.lineWidth = 3; g.beginPath(); g.moveTo(6, 27); g.lineTo(11, 22); g.stroke();  // empuñadura
+    g.fillStyle = 'rgba(160,220,230,.5)'; g.beginPath(); g.arc(22, 7, 3, 0, 7); g.fill();
   }
 }
 function drawMatIcon(g, id) {
@@ -2750,6 +3061,7 @@ function renderInv() {
     { id: I.ATHELAS_LEAF, use: () => consumeAthelas() },
     { id: I.PIPE,         use: () => smokePipe(), label: 'Fumar' },
     { id: I.ALE,          use: () => drinkAle() },
+    { id: I.MORGUL_BLADE, use: () => { if (inv[I.MORGUL_BLADE] > 0) { removeInv(I.MORGUL_BLADE, 1); setWeapon('morgul'); } }, label: 'Empuñar' },
   ];
   const useable = new Map(consumables.map(c => [c.id, c]));
   let anyObj = false;
@@ -3020,6 +3332,8 @@ function updateHUD(now) {
   const b = biomeAt(Math.floor(player.x), Math.floor(player.z));
   biomeEl.textContent = BIOME_NAME[b];
   coordsEl.textContent = `x ${player.x.toFixed(0)}  y ${player.y.toFixed(0)}  z ${player.z.toFixed(0)}`;
+  if (isNight() && !nightWarned) { nightWarned = true; toast('Cae la noche… los enemigos acechan. ¡Empuña tus armas!'); }
+  else if (isDayTime() && nightWarned) nightWarned = false;
 }
 
 /* ============================================================
@@ -3150,7 +3464,8 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) { processReacts(now); growCrops(now); }
+    if (!isGuest) { processReacts(now); growCrops(now); trySpawn(now); }
+    updateMobs(dt, now);
     updateDrops(dt, now);
     updateParticles(dt);
     updateAvatars(dt);
@@ -3194,6 +3509,13 @@ window.G = {
   // metalurgia (para pruebas)
   gear: () => ({ tool: { ...toolTier }, armor: armorTier, weapon: weaponTier }),
   setTools, setArmor, setWeapon, openForge, renderForge,
+  // enemigos (para pruebas)
+  mobs, spawnMob, trySpawn, updateMobs, fear, fearT: () => fearTimer,
+  mobList: () => [...mobs.values()].map(m => ({ id: m.id, type: m.type, hp: m.hp, x: +m.x.toFixed(1), y: +m.y.toFixed(1), z: +m.z.toFixed(1) })),
+  hitMob: id => { const m = mobs.get(id); if (m) playerHitMob(m); },
+  mobInView: () => { const m = mobInCrosshair(); return m ? m.id : null; },
+  forceRender() { camera.position.set(player.x, player.y + PEYE, player.z); camera.rotation.set(pitch, yaw, 0); renderer.render(scene, camera); },
+  god: v => godmode = v, freeze: v => mobsFrozen = v,
   findOre(id) { for (const ch of chunks.values()) for (let i = 0; i < ch.data.length; i++) if (ch.data[i] === id) { const lx = i % 16, lz = ((i / 16) | 0) % 16, ly = (i / 256) | 0; return { x: ch.cx * 16 + lx, y: ly, z: ch.cz * 16 + lz }; } return null; },
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
 };

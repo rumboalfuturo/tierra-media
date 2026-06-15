@@ -70,6 +70,17 @@ Excavando bajo tierra encuentras **vetas de mineral**: hierro (común), oro, **p
     - **Armas** (espada de hierro, espada de Gondor, daga élfica, cimitarra negra, espada de mithril): listas para los enemigos que llegarán.
 - Abajo a la izquierda se ve tu equipo actual (⚒ herramientas · 🛡 armadura · ⚔ arma).
 
+## ⚔️ Enemigos y combate
+
+Al **caer la noche** aparecen enemigos (de día solo en Mordor, que siempre es hostil). Atácalos con **clic izquierdo** (apuntando a ellos): tu espada hace más daño cuanto mejor sea. ¡Equípate antes de salir de noche!
+
+- **Orcos**: salen de noche y siempre en Mordor. Sueltan **hierro negro** y a veces piel de huargo.
+- **Uruk-hai**: más altos y fuertes, cerca de Isengard. Sueltan más hierro negro y a veces un estandarte de la Mano Blanca.
+- **Arañas de Mirkwood**: rápidas, en los bosques de noche; su mordisco te **envenena** (cúrate con athelas). Sueltan telaraña élfica.
+- **Nazgûl**: jefe muy raro de la noche profunda. Su grito te **paraliza de miedo** (la pantalla se oscurece y te frena). Derrótalo para conseguir una **Hoja de Morgul**, que puedes empuñar como el arma más letal del juego.
+
+El **hierro negro** que sueltan los enemigos es justo lo que necesitas para forjar la armadura más recia: derrota orcos → forja equipo pesado. En multijugador los enemigos los lleva el anfitrión y os pueden atacar a los dos.
+
 ## El mapa de la Tierra Media
 
 Pulsa **M** para ver el mapa con tu posición. Los lugares famosos están construidos en el mundo, dispuestos como en el mapa real (el este queda a +x y el sur a +z):
