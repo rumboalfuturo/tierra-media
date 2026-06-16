@@ -444,6 +444,7 @@ const I = {
   BOAT:226,
   APPLE:227, BERRIES:228,   // frutas comestibles (Fase 4)
   DIAMOND:229,              // gema del subsuelo profundo
+  MEAT:230,                 // carne de caza (comestible)
 };
 // objeto-arma → nivel de daño; la Hoja de Morgul también es un arma empuñable
 const WEAPON_ITEM = { [I.SW_IRON]:'iron', [I.SW_STEEL]:'steel', [I.SW_SILVER]:'silver', [I.SW_BIRON]:'blackiron', [I.SW_MITHRIL]:'mithril', [I.MORGUL_BLADE]:'morgul' };
@@ -479,7 +480,7 @@ const NAMES = {
   [B.MUSH_BROWN]:'Seta parda', [B.BERRYBUSH]:'Arbusto de bayas', [B.CACTUS]:'Cactus',
   [B.DEEPSTONE]:'Roca profunda', [B.HARDROCK]:'Roca abisal', [B.DIAMOND_ORE]:'Mineral de diamante',
   [B.DIAMOND_BLOCK]:'Bloque de diamante',
-  [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque', [I.DIAMOND]:'Diamante',
+  [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque', [I.DIAMOND]:'Diamante', [I.MEAT]:'Carne asada',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
@@ -2884,6 +2885,14 @@ const MOB = {
   pony:   { name:'Poni de la Comarca',  hp:20, passive:true, speed:2.6, scale:0.85, body:0x8a6a44, head:0x7a5a38, shape:'quad', mount:{ speed:1.5, jump:8.2, storage:true } },
   goat:   { name:'Cabra de Erebor',    hp:18, passive:true, speed:2.8, scale:0.90, body:0xd2caba, head:0xe2dacc, shape:'quad', horns:true, mount:{ speed:1.3, jump:11, climb:true, noFall:true } },
   sheep:  { name:'Oveja',              hp:16, passive:true, speed:2.2, scale:0.80, body:0xe8e6df, head:0xc9b9a6, shape:'quad', wooly:true },
+  cow:    { name:'Vaca',               hp:18, passive:true, speed:2.0, scale:1.05, body:0x6b4a30, head:0x8a6a48, shape:'quad', horns:true },
+  pig:    { name:'Cerdo',              hp:14, passive:true, speed:2.2, scale:0.78, body:0xe2a0a0, head:0xeab0b0, shape:'quad' },
+  fox:    { name:'Zorro',              hp:10, passive:true, speed:3.8, scale:0.62, body:0xc8662a, head:0xd98a4a, shape:'quad' },
+  deer:   { name:'Ciervo',             hp:16, passive:true, speed:3.4, scale:1.05, body:0x9a6a40, head:0xb08858, shape:'quad', horns:true },
+  dog:    { name:'Perro',              hp:16, passive:true, speed:3.0, scale:0.70, body:0x8a7256, head:0x9a8468, shape:'quad', companion:true },
+  chicken:{ name:'Gallina',            hp:6,  passive:true, speed:2.0, scale:0.70, body:0xeeeae0, head:0xeeeae0, shape:'fowl' },
+  fish:   { name:'Pez',                hp:4,  passive:true, speed:3.0, scale:0.60, body:0x5a86b0, head:0x76a2c8, shape:'fish', aquatic:true },
+  bird:   { name:'Pájaro',             hp:4,  passive:true, speed:3.6, scale:0.55, body:0x6a5236, head:0x7a6244, shape:'bird', flying:true },
 };
 const WOOL_REGROW = 60000;   // la lana vuelve a crecer en 1 min
 const MOB_DROP = {
@@ -2892,6 +2901,12 @@ const MOB_DROP = {
   spider: () => [[I.SPIDER_SILK, 1 + (Math.random() < 0.5 ? 1 : 0)]],
   nazgul: () => [[I.MORGUL_BLADE, 1], [I.GOLD_INGOT, 2]],
   horse:  () => [], pony: () => [], goat: () => [[I.WOLF_PELT, 1]], sheep: () => [[B.WOOL, 1]],
+  cow:    () => { const o = [[I.MEAT, 1 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.6) o.push([I.WOLF_PELT, 1]); return o; },
+  pig:    () => [[I.MEAT, 1 + (Math.random() < 0.5 ? 1 : 0)]],
+  deer:   () => { const o = [[I.MEAT, 1]]; if (Math.random() < 0.6) o.push([I.WOLF_PELT, 1]); return o; },
+  fox:    () => (Math.random() < 0.5 ? [[I.WOLF_PELT, 1]] : []),
+  chicken:() => [[I.MEAT, 1]], fish: () => [[I.MEAT, 1]],
+  dog:    () => [], bird: () => [],
 };
 
 // duración del día y la noche (fáciles de modificar)
@@ -2922,6 +2937,41 @@ function createMobMesh(type) {
     if (def.horns) { const hornGeo = new THREE.BoxGeometry(0.07 * sc, 0.28 * sc, 0.07 * sc);
       const hm2 = new THREE.MeshLambertMaterial({ color: 0x4a3a28 }); mats.push(hm2);
       for (const s of [-1, 1]) { const horn = new THREE.Mesh(hornGeo, hm2); horn.position.set(s * 0.08 * sc, 1.5 * sc, -0.78 * sc); horn.rotation.x = 0.5; g.add(horn); } }
+    return { group: g, mats, limbs };
+  }
+  if (def.shape === 'fowl') {                          // gallina: cuerpo pequeño, dos patas, pico y cresta
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.36 * sc, 0.36 * sc, 0.42 * sc), bm); body.position.y = 0.5 * sc;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.26 * sc, 0.26 * sc, 0.26 * sc), hm); head.position.set(0, 0.78 * sc, -0.2 * sc);
+    g.add(body, head);
+    const beakM = new THREE.MeshLambertMaterial({ color: 0xe0a23a }); mats.push(beakM);
+    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.1 * sc, 0.08 * sc, 0.12 * sc), beakM); beak.position.set(0, 0.76 * sc, -0.36 * sc); g.add(beak);
+    const combM = new THREE.MeshLambertMaterial({ color: 0xd23a3a }); mats.push(combM);
+    const comb = new THREE.Mesh(new THREE.BoxGeometry(0.08 * sc, 0.12 * sc, 0.16 * sc), combM); comb.position.set(0, 0.95 * sc, -0.18 * sc); g.add(comb);
+    const legGeo = new THREE.BoxGeometry(0.06 * sc, 0.3 * sc, 0.06 * sc);
+    const legL = new THREE.Mesh(legGeo, beakM); legL.position.set(0.1 * sc, 0.16 * sc, 0); g.add(legL);
+    const legR = new THREE.Mesh(legGeo, beakM); legR.position.set(-0.1 * sc, 0.16 * sc, 0); g.add(legR);
+    limbs.legL = legL; limbs.legR = legR;
+    return { group: g, mats, limbs };
+  }
+  if (def.shape === 'fish') {                          // pez: cuerpo aplanado y cola
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.22 * sc, 0.4 * sc, 0.7 * sc), bm); body.position.y = 0.3 * sc;
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12 * sc, 0.34 * sc, 0.24 * sc), hm); tail.position.set(0, 0.3 * sc, 0.5 * sc);
+    g.add(body, tail);
+    const eyeM = new THREE.MeshBasicMaterial({ color: 0x101418 }); mats.push(eyeM);
+    for (const s of [-1, 1]) { const eye = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), eyeM); eye.position.set(s * 0.1 * sc, 0.34 * sc, -0.3 * sc); g.add(eye); }
+    limbs.tail = tail;
+    return { group: g, mats, limbs };
+  }
+  if (def.shape === 'bird') {                          // pájaro: cuerpo y alas que aletean
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.24 * sc, 0.24 * sc, 0.4 * sc), bm); body.position.y = 0.4 * sc;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.2 * sc, 0.2 * sc, 0.2 * sc), hm); head.position.set(0, 0.5 * sc, -0.26 * sc);
+    g.add(body, head);
+    const beakM = new THREE.MeshLambertMaterial({ color: 0xe0a23a }); mats.push(beakM);
+    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.12 * sc), beakM); beak.position.set(0, 0.5 * sc, -0.4 * sc); g.add(beak);
+    const wingGeo = new THREE.BoxGeometry(0.4 * sc, 0.06 * sc, 0.26 * sc);
+    const wingL = new THREE.Mesh(wingGeo, hm); wingL.position.set(0.3 * sc, 0.42 * sc, 0); g.add(wingL);
+    const wingR = new THREE.Mesh(wingGeo, hm); wingR.position.set(-0.3 * sc, 0.42 * sc, 0); g.add(wingR);
+    limbs.wingL = wingL; limbs.wingR = wingR;
     return { group: g, mats, limbs };
   }
   if (def.shape === 'spider') {
@@ -3160,7 +3210,11 @@ let lastAnimalSpawn = 0;
 function updatePassive(m, dt) {
   const def = m.def;
   let mvx = 0, mvz = 0, moving = false;
-  if (m.flee > 0) {
+  if (def.companion && m.tame) {                    // el perro domado sigue al jugador
+    const dx = player.x - m.x, dz = player.z - m.z, d = Math.hypot(dx, dz) || 1;
+    if (d > 3.2) { mvx = dx / d; mvz = dz / d; moving = true; }
+    else { m.wander -= dt; if (m.wander <= 0) { m.wander = 2 + Math.random() * 3; m.wyaw = Math.random() * 6.283; m.moveT = Math.random() < 0.3; } if (m.moveT) { mvx = -Math.sin(m.wyaw) * 0.2; mvz = -Math.cos(m.wyaw) * 0.2; moving = true; } }
+  } else if (m.flee > 0) {
     m.flee -= dt;
     const dx = m.x - player.x, dz = m.z - player.z, d = Math.hypot(dx, dz) || 1;
     mvx = dx / d; mvz = dz / d; moving = true;
@@ -3168,25 +3222,41 @@ function updatePassive(m, dt) {
     m.wander -= dt;
     if (m.wander <= 0) { m.wander = 3 + Math.random() * 4; m.wyaw = Math.random() * 6.283; m.moveT = Math.random() < 0.6; }
     if (m.moveT) { mvx = -Math.sin(m.wyaw) * 0.35; mvz = -Math.cos(m.wyaw) * 0.35; moving = true; }
+    if (def.aquatic && moving && blockAtF(m.x + mvx * 0.7, m.y + 0.3, m.z + mvz * 0.7) !== B.WATER) { m.wander = 0; mvx = mvz = 0; moving = false; }   // el pez no sale del agua
   }
   if (moving) m.yaw = Math.atan2(-mvx, -mvz);
   const sp = def.speed * (m.flee > 0 ? 1.6 : 1);
   const k = 1 - Math.exp(-8 * dt);
   m.vx += (mvx * sp - m.vx) * k; m.vz += (mvz * sp - m.vz) * k;
-  if (m.onGround && moving && Math.abs(m.vx) < 0.05 && Math.abs(m.vz) < 0.05) m.vy = 6;
-  m.vy -= 22 * dt; if (m.vy < -40) m.vy = -40;
+  if (def.aquatic) {                                // nadar: sin gravedad, se mantiene sumergido
+    const inWater = blockAtF(m.x, m.y + 0.3, m.z) === B.WATER;
+    if (!inWater) { m.vy -= 22 * dt; m.flopT = (m.flopT || 0) + dt; }
+    else { m.flopT = 0; const deeper = blockAtF(m.x, m.y + 1.0, m.z) === B.WATER;
+      m.vy += ((deeper ? Math.sin(m.anim * 0.7) * 0.3 : -0.8) - m.vy) * (1 - Math.exp(-4 * dt)); }
+    if ((m.flopT || 0) > 6) m.hp = 0;              // se asfixia fuera del agua
+  } else if (def.flying) {                          // volar: planear sobre el suelo
+    const below = worldGetBlock(Math.floor(m.x), Math.floor(m.y - 1.5), Math.floor(m.z));
+    const tooLow = isSolid(below) || isFluid(below);
+    m.vy += ((tooLow ? 2.2 : Math.sin(m.anim * 0.5) * 0.5) - m.vy) * (1 - Math.exp(-3 * dt));
+  } else {
+    if (m.onGround && moving && Math.abs(m.vx) < 0.05 && Math.abs(m.vz) < 0.05) m.vy = 6;
+    m.vy -= 22 * dt; if (m.vy < -40) m.vy = -40;
+  }
   mobMove(m, dt);
   if (blockAtF(m.x, m.y + 0.1, m.z) === B.LAVA || m.y < -8) { m.hp = 0; }
   if (m.hp <= 0) { killMob(m, null); return; }
   if (m.def.wooly && !m.wool && m.woolT && nowMs() > m.woolT) { m.wool = true; m.woolT = 0; }   // le vuelve a crecer la lana
   const d2 = (player.x - m.x) ** 2 + (player.z - m.z) ** 2;
-  if (d2 > (m.tame ? 110 : 64) ** 2) { removeMob(m.id); return; }
-  m.anim += dt * (moving ? 8 : 1.5);
-  const bob = Math.sin(m.anim) * (moving ? 0.05 : 0.015);
+  const despawnR = m.tame ? 140 : (def.flying || def.aquatic) ? 80 : 64;
+  if (d2 > despawnR ** 2) { removeMob(m.id); return; }
+  m.anim += dt * (moving || def.flying || def.aquatic ? 8 : 1.5);
+  const bob = (def.flying || def.aquatic) ? 0 : Math.sin(m.anim) * (moving ? 0.05 : 0.015);
   m.group.position.set(m.x, m.y + bob, m.z); m.group.rotation.y = m.yaw;
   if (m.limbs.legL) { const sw = Math.sin(m.anim) * (moving ? 0.5 : 0.03);
     m.limbs.legL.rotation.x = sw; m.limbs.legR.rotation.x = -sw;
     if (m.limbs.legL2) { m.limbs.legL2.rotation.x = -sw; m.limbs.legR2.rotation.x = sw; } }
+  if (m.limbs.tail) m.limbs.tail.rotation.y = Math.sin(m.anim * 1.5) * 0.5;                  // pez: aletea la cola
+  if (m.limbs.wingL) { const f = Math.sin(m.anim * 2) * 0.7; m.limbs.wingL.rotation.z = -f; m.limbs.wingR.rotation.z = f; }  // pájaro: bate las alas
   flashMob(m, dt);
 }
 
@@ -3210,6 +3280,14 @@ function interactAnimal(m) {
     if (!m.wool) { toast('La oveja aún no tiene lana'); return; }
     shearAnimal(m); return;
   }
+  if (m.def.companion) {                          // perro: domar para que te siga
+    if (m.tame) { toast('Tu perro te acompaña'); return; }
+    if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); doTame(m, true); }
+    else if (inv[I.BARLEY_GRAIN] > 0) { removeInv(I.BARLEY_GRAIN, 1); doTame(m, false); }
+    else { toast('Dale grano de cebada para domar al perro'); return; }
+    spawnPuffs(m.x, m.y + 0.8, m.z, '#ffd27a', 5); return;
+  }
+  if (!m.def.mount) { toast('Es un animal salvaje (ataca con clic izquierdo para cazarlo)'); return; }   // vaca, cerdo, zorro, ciervo…
   if (m.tame) { mountAnimal(m); return; }
   if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); doTame(m, true); }
   else if (inv[I.BARLEY_GRAIN] > 0) { removeInv(I.BARLEY_GRAIN, 1); doTame(m, false); }
@@ -3226,8 +3304,9 @@ function shearAnimal(m) {
 }
 function doTame(m, instant) {
   if (isGuest && hostConn && hostConn.open) hostConn.send({ t: 'tame', id: m.id, instant });
-  if (instant) { m.tame = true; toast('¡' + m.def.name + ' domado! Clic derecho para montarlo'); }
-  else { m.feed = (m.feed || 0) + 1; if (m.feed >= 4) { m.tame = true; toast('¡' + m.def.name + ' domado! Clic derecho para montarlo'); } else toast('Le das de comer… ' + m.feed + '/4'); }
+  const msg = m.def.companion ? '¡' + m.def.name + ' domado! Te seguirá a todas partes' : '¡' + m.def.name + ' domado! Clic derecho para montarlo';
+  if (instant) { m.tame = true; toast(msg); }
+  else { m.feed = (m.feed || 0) + 1; if (m.feed >= 4) { m.tame = true; toast(msg); } else toast('Le das de comer… ' + m.feed + '/4'); }
 }
 function mountAnimal(m) {
   if (player.mount) return;
@@ -3311,20 +3390,34 @@ function trySpawnAnimal(now) {
   if (now - lastAnimalSpawn < 2500) return;
   lastAnimalSpawn = now;
   let count = 0; for (const m of mobs.values()) if (m.def.passive) count++;
-  if (count >= 6) return;
+  if (count >= 8) return;
   const ang = Math.random() * 6.283, r = 22 + Math.random() * 16;
   const sx = Math.round(player.x + Math.cos(ang) * r), sz = Math.round(player.z + Math.sin(ang) * r);
+  const biome = biomeAt(sx, sz);
+  // ¿hay agua en esta columna? a veces, un pez (que necesita al menos 2 de hondo)
+  let waterTop = -1;
+  for (let y = WH - 3; y > 2; y--) { if (worldGetBlock(sx, y, sz) === B.WATER) { waterTop = y; break; } }
+  if (waterTop > 0 && worldGetBlock(sx, waterTop - 1, sz) === B.WATER && Math.random() < 0.5) {
+    spawnMob('fish', sx + 0.5, waterTop - 0.4, sz + 0.5); return;
+  }
+  // suelo firme
   let gy = -1;
   for (let y = WH - 3; y > 2; y--) {
     if (isSolid(worldGetBlock(sx, y, sz)) && worldGetBlock(sx, y + 1, sz) === B.AIR && worldGetBlock(sx, y + 2, sz) === B.AIR) { gy = y + 1; break; }
   }
   if (gy < 0) return;
-  const biome = biomeAt(sx, sz);
   let type = null;
-  if (biome === BIOME.MOUNTAIN || gy - 1 >= ROCK_H) type = Math.random() < 0.4 ? 'sheep' : 'goat';
-  else if (biome === BIOME.SHIRE) { const r2 = Math.random(); type = r2 < 0.35 ? 'sheep' : r2 < 0.67 ? 'horse' : 'pony'; }
-  else return;
-  spawnMob(type, sx + 0.5, gy, sz + 0.5);
+  if (biome === BIOME.MOUNTAIN || gy - 1 >= ROCK_H) { const r2 = Math.random(); type = r2 < 0.4 ? 'sheep' : r2 < 0.8 ? 'goat' : 'bird'; }
+  else if (biome === BIOME.SHIRE) {
+    const r2 = Math.random();
+    type = r2 < 0.13 ? 'sheep' : r2 < 0.24 ? 'horse' : r2 < 0.33 ? 'pony' : r2 < 0.47 ? 'cow'
+         : r2 < 0.59 ? 'pig' : r2 < 0.70 ? 'chicken' : r2 < 0.79 ? 'dog' : r2 < 0.87 ? 'fox'
+         : r2 < 0.95 ? 'deer' : 'bird';
+  } else if (biome === BIOME.LOTHLORIEN) {
+    const r2 = Math.random();
+    type = r2 < 0.30 ? 'deer' : r2 < 0.55 ? 'fox' : r2 < 0.75 ? 'bird' : r2 < 0.90 ? 'dog' : 'chicken';
+  } else return;
+  spawnMob(type, sx + 0.5, MOB[type].flying ? gy + 5 : gy, sz + 0.5);   // los pájaros nacen en el aire
 }
 
 /* ============================================================
@@ -3860,6 +3953,11 @@ function drawItemIcon(g, id) {
     g.fillStyle = '#b8284a'; for (const [x, y] of [[11, 14], [19, 13], [15, 20], [22, 20]]) { g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
     g.fillStyle = 'rgba(255,180,190,.7)'; for (const [x, y] of [[10, 13], [18, 12], [14, 19], [21, 19]]) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
     g.fillStyle = '#3f8a44'; g.fillRect(15, 7, 2, 4);
+  } else if (id === I.MEAT) {
+    g.fillStyle = '#9a4a30'; g.beginPath(); g.ellipse(16, 17, 9, 7, 0.3, 0, 7); g.fill();          // chuleta
+    g.fillStyle = '#7a3420'; g.beginPath(); g.ellipse(16, 17, 9, 7, 0.3, 0, 7); g.stroke();
+    g.fillStyle = '#eae0d0'; g.fillRect(22, 9, 4, 7);                                                // hueso
+    g.fillStyle = 'rgba(255,180,150,.6)'; g.beginPath(); g.ellipse(14, 16, 3, 2, 0.3, 0, 7); g.fill();
   } else if (id === I.DIAMOND) {
     g.fillStyle = '#6ee6de'; g.beginPath(); g.moveTo(16, 5); g.lineTo(26, 14); g.lineTo(16, 27); g.lineTo(6, 14); g.closePath(); g.fill();
     g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.moveTo(16, 5); g.lineTo(20, 14); g.lineTo(16, 14); g.closePath(); g.fill();
@@ -4072,6 +4170,7 @@ function renderInv() {
     { id: I.GOLDEN_APPLE, use: () => { if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); heal(10); regenBuffTimer = 20; toast('La manzana de oro te restaura'); } }, label: 'Comer' },
     { id: I.APPLE,        use: () => { if (inv[I.APPLE] > 0)   { removeInv(I.APPLE, 1);   heal(3); toast('Comes una manzana'); } }, label: 'Comer' },
     { id: I.BERRIES,      use: () => { if (inv[I.BERRIES] > 0) { removeInv(I.BERRIES, 1); heal(2); toast('Comes unas bayas'); } }, label: 'Comer' },
+    { id: I.MEAT,         use: () => { if (inv[I.MEAT] > 0)    { removeInv(I.MEAT, 1);    heal(5); toast('Comes carne asada'); } }, label: 'Comer' },
   ];
   const useable = new Map(consumables.map(c => [c.id, c]));
   let anyObj = false;
@@ -4157,6 +4256,7 @@ const HELP_KB = [
   { k:['caballo','montar','montura','horse','rohan','cabalgar'], a:'Acércate a un <b>caballo</b> y dale de comer con clic derecho (<b>grano de cebada</b> ×4, o una <b>manzana de oro</b> al instante). Cuando esté domado, clic derecho para montarlo. <b>F</b> para bajar.' },
   { k:['cabra','goat','montana','escalar','trepar'], a:'La <b>cabra de Erebor</b> (en las montañas) <b>trepa</b> laderas y no sufre daño por caídas. Dómala con grano y móntala con clic derecho.' },
   { k:['poni','pony','alforja','alforjas'], a:'El <b>poni</b> lleva <b>alforjas</b>: móntalo y pulsa <b>E</b> para guardar materiales en su bolsa.' },
+  { k:['animal','animales','vaca','cerdo','gallina','ciervo','zorro','pez','peces','pajaro','perro','carne','cazar'], a:'Por el mundo hay <b>vacas, cerdos, gallinas, ciervos y zorros</b> (ataca con clic izquierdo para cazarlos: sueltan <b>carne</b> que puedes comer), <b>peces</b> en el agua, <b>pájaros</b> en el cielo y <b>perros</b>: dale <b>grano de cebada</b> a un perro (clic derecho) para domarlo y que te siga.' },
   { k:['cultivo','sembrar','plantar','farm','galenas','cebada','semilla','semillas','arar','huerto','agricultura'], a:'Labra la tierra con la <b>pala</b> (clic derecho sobre hierba), siembra <b>semillas</b> de galenas o cebada con clic derecho y espera a que crezcan. Las semillas salen de romper hierba.' },
   { k:['pipa','pipe','fumar'], a:'Fabrica una <b>pipa</b> con 4 tablones. Fúmala (con hierba para pipa) desde el inventario para recuperarte más rápido.' },
   { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
