@@ -414,13 +414,17 @@ const B = {
   MOSSYSTONE:40, BASALT:41, ASH:42, MUD:43, SOULFIRE:44,
   WOOL:45, BED:46, OBSIDIAN:47,
   TORCH:48, LADDER:49, LADDERS:50,   // antorcha, escalera de madera, escalera de piedra
+  // árboles y plantas nuevos (Fase 4)
+  PINELEAVES:51, BIRCHLOG:52, BIRCHLEAVES:53, APPLELEAVES:54, PALMLEAVES:55,
+  FLOWER_R:56, FLOWER_Y:57, MUSH_RED:58, MUSH_BROWN:59, BERRYBUSH:60, CACTUS:61,
 };
 const isLadder = id => id === B.LADDER || id === B.LADDERS;
 const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
 // mineral → lingote al fundir en la forja (B.MITHRIL incluido)
 const SMELT = { [B.IRONORE]:'iron', [B.GOLDORE]:'gold', [B.SILVERORE]:'silver', [B.BIRONORE]:'biron', [B.MITHRIL]:'mithril' };
 // plantas finas (se atraviesan, se rompen de un golpe, se dibujan como aspas)
-const PLANTS = new Set([B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.ATHELAS, B.MSPROUT]);
+const PLANTS = new Set([B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.ATHELAS, B.MSPROUT,
+                        B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.BERRYBUSH, B.CACTUS]);
 const isPlant = id => PLANTS.has(id);
 
 // objetos del inventario que no son bloques (ids ≥ 200)
@@ -433,6 +437,7 @@ const I = {
   SHEARS:220,
   SW_IRON:221, SW_STEEL:222, SW_SILVER:223, SW_BIRON:224, SW_MITHRIL:225,   // espadas (objetos del cinturón)
   BOAT:226,
+  APPLE:227, BERRIES:228,   // frutas comestibles (Fase 4)
 };
 // objeto-arma → nivel de daño; la Hoja de Morgul también es un arma empuñable
 const WEAPON_ITEM = { [I.SW_IRON]:'iron', [I.SW_STEEL]:'steel', [I.SW_SILVER]:'silver', [I.SW_BIRON]:'blackiron', [I.SW_MITHRIL]:'mithril', [I.MORGUL_BLADE]:'morgul' };
@@ -462,6 +467,11 @@ const NAMES = {
   [B.MOSSYSTONE]:'Piedra musgosa', [B.BASALT]:'Basalto', [B.ASH]:'Ceniza', [B.MUD]:'Lodo', [B.SOULFIRE]:'Fuego de almas',
   [B.WOOL]:'Lana', [B.BED]:'Lecho de lana', [B.OBSIDIAN]:'Obsidiana',
   [B.TORCH]:'Antorcha', [B.LADDER]:'Escalera de madera', [B.LADDERS]:'Escalera de piedra',
+  [B.PINELEAVES]:'Hojas de pino', [B.BIRCHLOG]:'Tronco de abedul', [B.BIRCHLEAVES]:'Hojas de abedul',
+  [B.APPLELEAVES]:'Hojas de manzano', [B.PALMLEAVES]:'Hojas de palmera',
+  [B.FLOWER_R]:'Amapolas', [B.FLOWER_Y]:'Flores amarillas', [B.MUSH_RED]:'Seta roja',
+  [B.MUSH_BROWN]:'Seta parda', [B.BERRYBUSH]:'Arbusto de bayas', [B.CACTUS]:'Cactus',
+  [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
@@ -490,14 +500,17 @@ const NMAT = 4;
 const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.PLANK, B.LEAVES,
                    B.MLEAVES, B.MROCK, B.DBRICK, B.MITHRIL, B.IRONORE, B.GOLDORE, B.SILVERORE, B.BIRONORE,
                    B.GOLDBLOCK, B.MOSSYSTONE, B.BASALT, B.ASH, B.MUD, B.SOULFIRE, B.OBSIDIAN, B.WOOL, B.BED,
-                   B.TORCH, B.LADDER, B.LADDERS, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA];
+                   B.TORCH, B.LADDER, B.LADDERS, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA,
+                   B.BIRCHLOG, B.PINELEAVES, B.BIRCHLEAVES, B.APPLELEAVES, B.PALMLEAVES,
+                   B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.CACTUS];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
                 [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
                 [B.FARMLAND]: B.DIRT, [B.MGLOW]: B.MLEAVES };
 const FLAMMABLE = new Set([B.GRASS, B.LEAVES, B.MLEAVES, B.LOG, B.MLOG, B.PLANK, B.CHEST,
                            B.DOORX, B.DOORXO, B.DOORZ, B.DOORZO,
-                           B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.MSPROUT, B.BARREL]);
+                           B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.MSPROUT, B.BARREL,
+                           B.BIRCHLOG, B.PINELEAVES, B.BIRCHLEAVES, B.APPLELEAVES, B.PALMLEAVES]);
 
 // metalurgia: niveles de herramienta, armadura y arma
 const TIER_FACTOR = { base:1, iron:0.7, steel:0.5, mithril:0.35 };       // multiplica los golpes necesarios
@@ -1056,12 +1069,30 @@ function genFlora(data, cx, cz) {
     }
     if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
     const ih = heightAt(wx, wz);
-    if (ih <= WATER_Y + 1 || ih >= 27) continue;
-    if (data[IDX(lx, ih, lz)] !== B.GRASS) continue;
     if (ih + 1 >= WH || data[IDX(lx, ih + 1, lz)] !== B.AIR) continue;
+    const surf = data[IDX(lx, ih, lz)];
+    // cactus en la arena de las playas
+    if (surf === B.SAND) {
+      if (hash2(wx, wz, SEED + 34) < 0.016) {
+        data[IDX(lx, ih + 1, lz)] = B.CACTUS;
+        if (hash2(wx, wz, SEED + 35) < 0.4 && ih + 2 < WH && data[IDX(lx, ih + 2, lz)] === B.AIR) data[IDX(lx, ih + 2, lz)] = B.CACTUS;
+      }
+      continue;
+    }
+    if (ih <= WATER_Y + 1 || ih >= 27) continue;
+    if (surf !== B.GRASS) continue;
     const r = hash2(wx, wz, SEED + 31);
-    if (biome === BIOME.LOTHLORIEN) { if (r < 0.006) data[IDX(lx, ih + 1, lz)] = B.ATHELAS; }   // athelas, muy rara
-    else if (r < 0.004) data[IDX(lx, ih + 1, lz)] = B.PIPEWEEDM;                                  // galenas silvestres
+    let plant = 0;
+    if (biome === BIOME.LOTHLORIEN && r < 0.006) plant = B.ATHELAS;          // athelas, muy rara
+    else if (biome === BIOME.SHIRE && r < 0.004) plant = B.PIPEWEEDM;        // galenas silvestres
+    else {                                                                   // flores, setas y bayas decorativas
+      const f = hash2(wx, wz, SEED + 32);
+      if (f < 0.022) plant = B.FLOWER_R;
+      else if (f < 0.044) plant = B.FLOWER_Y;
+      else if (f < 0.052) plant = biome === BIOME.LOTHLORIEN ? B.MUSH_RED : B.MUSH_BROWN;
+      else if (f < 0.058) plant = B.BERRYBUSH;
+    }
+    if (plant) data[IDX(lx, ih + 1, lz)] = plant;
   }
 }
 
@@ -1135,24 +1166,64 @@ function genTrees(data, cx, cz) {
     const lx = wx - baseX, lz = wz - baseZ;
     if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 1 || y >= WH) return;
     const cur = data[IDX(lx, y, lz)];
-    if (cur === B.AIR || (overwriteLeaves && (cur === B.LEAVES || cur === B.MLEAVES))) {
+    if (cur === B.AIR || (overwriteLeaves && (cur === B.LEAVES || cur === B.MLEAVES
+        || cur === B.PINELEAVES || cur === B.BIRCHLEAVES || cur === B.APPLELEAVES || cur === B.PALMLEAVES))) {
       data[IDX(lx, y, lz)] = id;
     }
+  };
+  const roundCanopy = (wx, gh, wz, th, leaf) => {     // copa redondeada (roble, abedul, manzano)
+    for (let y = gh + th - 1; y <= gh + th; y++)
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+        if (Math.abs(dx) === 2 && Math.abs(dz) === 2 && ((dx + dz + y) & 1)) continue;
+        put(wx + dx, y, wz + dz, leaf, false);
+      }
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) put(wx + dx, gh + th + 1, wz + dz, leaf, false);
+    put(wx, gh + th + 2, wz, leaf, false);
   };
   for (let tz = -3; tz < CH + 3; tz++) for (let tx = -3; tx < CH + 3; tx++) {
     const wx = baseX + tx, wz = baseZ + tz;
     const biome = biomeAt(wx, wz);
-    if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
-    const density = biome === BIOME.LOTHLORIEN ? 0.022 : 0.005;
-    if (hash2(wx, wz, SEED + 9) >= density) continue;
     const gh = heightAt(wx, wz);
-    if (gh <= WATER_Y + 1 || gh >= 27) continue;
     if (Math.hypot(wx - SPAWN.x, wz - SPAWN.z) < 7) continue;
     if (Math.hypot(wx - HOUSE.x, wz - HOUSE.z) < 9) continue;
     if (Math.hypot(wx - ISEN.x, wz - ISEN.z) < 34) continue;
     if (Math.hypot(wx - MTIR.x, wz - MTIR.z) < 38) continue;
     if (wx >= 0 && wx <= 60 && wz >= 170 && wz <= 210) continue;     // Abismo de Helm
     if (wx >= 130 && wx <= 200 && wz >= -60 && wz <= 5) continue;    // Moria
+
+    // PALMERAS en las playas de arena junto al agua
+    if (gh >= WATER_Y && gh <= WATER_Y + 1 && (biome === BIOME.SHIRE || biome === BIOME.LOTHLORIEN)
+        && hash2(wx, wz, SEED + 14) < 0.010) {
+      const th = 5 + Math.floor(hash2(wz, wx, SEED + 15) * 3), top = gh + th;
+      for (let y = gh + 1; y <= top; y++) put(wx, y, wz, B.LOG, true);
+      put(wx, top + 1, wz, B.PALMLEAVES, false);
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {     // frondas radiales
+        put(wx + dx, top, wz + dz, B.PALMLEAVES, false);
+        put(wx + dx * 2, top, wz + dz * 2, B.PALMLEAVES, false);
+        put(wx + dx * 2, top - 1, wz + dz * 2, B.PALMLEAVES, false);
+      }
+      continue;
+    }
+
+    // PINOS en las laderas de las montañas
+    if (biome === BIOME.MOUNTAIN) {
+      if (gh < WATER_Y + 3 || gh > 31) continue;
+      if (hash2(wx, wz, SEED + 9) >= 0.011) continue;
+      const th = 7 + Math.floor(hash2(wx, wz, SEED + 10) * 4), base = gh + 3;
+      for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.LOG, true);
+      for (let y = base; y <= gh + th; y++) {                          // copa cónica que mengua
+        const rr = Math.max(0, 3 - Math.floor((y - base) / 2));
+        for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++)
+          if (Math.abs(dx) + Math.abs(dz) <= rr) put(wx + dx, y, wz + dz, B.PINELEAVES, false);
+      }
+      put(wx, gh + th + 1, wz, B.PINELEAVES, false);
+      continue;
+    }
+
+    if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
+    if (gh <= WATER_Y + 1 || gh >= 27) continue;
+    const density = biome === BIOME.LOTHLORIEN ? 0.022 : 0.006;
+    if (hash2(wx, wz, SEED + 9) >= density) continue;
     const r2 = hash2(wx, wz, SEED + 10);
 
     if (biome === BIOME.LOTHLORIEN) {
@@ -1166,16 +1237,17 @@ function genTrees(data, cx, cz) {
         if (Math.abs(dx) + Math.abs(dz) <= 1) put(wx + dx, gh + th + 2, wz + dz, B.MLEAVES, false);
       for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.MLOG, true);
     } else {
-      const th = 4 + Math.floor(r2 * 2);
-      for (let y = gh + th - 1; y <= gh + th; y++)
-        for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-          if (Math.abs(dx) === 2 && Math.abs(dz) === 2 && ((dx + dz + y) & 1)) continue;
-          put(wx + dx, y, wz + dz, B.LEAVES, false);
-        }
-      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++)
-        put(wx + dx, gh + th + 1, wz + dz, B.LEAVES, false);
-      put(wx, gh + th + 2, wz, B.LEAVES, false);
-      for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.LOG, true);
+      // la Comarca: roble (común), abedul (frecuente) y manzano (raro, da fruta)
+      const kind = r2 < 0.12 ? 'apple' : r2 < 0.42 ? 'birch' : 'oak';
+      if (kind === 'birch') {
+        const th = 5 + Math.floor(r2 * 3);
+        roundCanopy(wx, gh, wz, th, B.BIRCHLEAVES);
+        for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.BIRCHLOG, true);
+      } else {
+        const th = 4 + Math.floor(r2 * 2);
+        roundCanopy(wx, gh, wz, th, kind === 'apple' ? B.APPLELEAVES : B.LEAVES);
+        for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.LOG, true);
+      }
     }
   }
 }
@@ -1670,6 +1742,67 @@ const TILE_PAINTERS = [
     actx.fillRect(ox + 2, oy, 2, T); actx.fillRect(ox + 12, oy, 2, T);
     for (let y = 2; y < T; y += 4) actx.fillRect(ox + 2, oy + y, T - 4, 2);
   },
+  /* 52 pine_needles */ (ox, oy, rng) => {
+    speckle(ox, oy, [38, 86, 54], 0.22, rng);
+    for (let i = 0; i < 14; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 22, 58, 36);
+  },
+  /* 53 birch_bark */ (ox, oy, rng) => {
+    speckle(ox, oy, [226, 224, 214], 0.05, rng);
+    actx.fillStyle = css(54, 52, 48);                                   // marcas negras del abedul
+    for (let i = 0; i < 6; i++) { const y = (rng() * 15) | 0, x = (rng() * 11) | 0, w = 2 + ((rng() * 3) | 0);
+      actx.fillRect(ox + x, oy + y, w, 1); }
+  },
+  /* 54 birch_leaves */ (ox, oy, rng) => {
+    speckle(ox, oy, [110, 162, 74], 0.22, rng);
+    for (let i = 0; i < 10; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 142, 188, 96);
+  },
+  /* 55 apple_leaves */ (ox, oy, rng) => {
+    speckle(ox, oy, [60, 118, 50], 0.22, rng);
+    for (let i = 0; i < 5; i++) { const x = 1 + ((rng() * 13) | 0), y = 1 + ((rng() * 13) | 0);
+      actx.fillStyle = css(206, 42, 38); actx.fillRect(ox + x, oy + y, 2, 2);              // manzanas rojas
+      actx.fillStyle = css(255, 140, 130); px(ox, oy, x, y, 255, 150, 140); }
+  },
+  /* 56 palm_fronds */ (ox, oy, rng) => {
+    speckle(ox, oy, [74, 142, 66], 0.2, rng);
+    actx.fillStyle = 'rgba(40,98,44,.7)';
+    for (let i = 0; i < 5; i++) actx.fillRect(ox, oy + i * 3 + ((rng() * 2) | 0), T, 1);   // nervaduras de las hojas
+  },
+  /* 57 poppies (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(70, 130, 60);                                  // tallos verdes
+    for (const x of [4, 8, 11]) actx.fillRect(ox + x, oy + 7, 1, 8);
+    actx.fillStyle = css(214, 52, 48);                                  // flores rojas
+    actx.fillRect(ox + 3, oy + 4, 3, 3); actx.fillRect(ox + 7, oy + 3, 3, 3); actx.fillRect(ox + 10, oy + 5, 3, 3);
+    actx.fillStyle = css(40, 30, 20); px(ox, oy, 4, 5, 40, 30, 20); px(ox, oy, 8, 4, 40, 30, 20); px(ox, oy, 11, 6, 40, 30, 20);
+  },
+  /* 58 yellow_flowers (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(72, 134, 62);
+    for (const x of [4, 8, 11]) actx.fillRect(ox + x, oy + 8, 1, 7);
+    actx.fillStyle = css(238, 206, 70);                                 // pétalos amarillos
+    actx.fillRect(ox + 3, oy + 5, 3, 3); actx.fillRect(ox + 7, oy + 4, 3, 3); actx.fillRect(ox + 10, oy + 6, 3, 3);
+    actx.fillStyle = css(250, 240, 180); px(ox, oy, 4, 6, 250, 240, 180); px(ox, oy, 8, 5, 250, 240, 180); px(ox, oy, 11, 7, 250, 240, 180);
+  },
+  /* 59 red_mushroom (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(232, 232, 222); actx.fillRect(ox + 7, oy + 9, 2, 5);             // tallo
+    actx.fillStyle = css(196, 44, 40); actx.fillRect(ox + 4, oy + 5, 8, 4); actx.fillRect(ox + 5, oy + 4, 6, 1);  // sombrero rojo
+    actx.fillStyle = css(244, 244, 240); px(ox, oy, 6, 6, 244, 244, 240); px(ox, oy, 9, 6, 244, 244, 240); px(ox, oy, 8, 7, 244, 244, 240);  // motas
+  },
+  /* 60 brown_mushroom (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(224, 218, 206); actx.fillRect(ox + 7, oy + 9, 2, 5);             // tallo
+    actx.fillStyle = css(140, 96, 56); actx.fillRect(ox + 4, oy + 6, 8, 3); actx.fillRect(ox + 5, oy + 5, 6, 1);  // sombrero pardo
+  },
+  /* 61 berry_bush (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(52, 104, 48);                                  // matojo verde
+    for (let i = 0; i < 16; i++) px(ox, oy, 3 + ((rng() * 10) | 0), 6 + ((rng() * 9) | 0), 52, 104, 48);
+    actx.fillStyle = css(40, 84, 38); actx.fillRect(ox + 4, oy + 8, 8, 6);
+    actx.fillStyle = css(186, 40, 64);                                  // bayas rojas
+    for (const [x, y] of [[5, 9], [8, 11], [10, 9], [6, 12]]) { px(ox, oy, x, y, 196, 44, 70); px(ox, oy, x + 1, y, 150, 30, 52); }
+  },
+  /* 62 cactus (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(64, 132, 70); actx.fillRect(ox + 6, oy + 1, 4, 14);              // tronco
+    actx.fillStyle = css(54, 116, 60); actx.fillRect(ox + 3, oy + 6, 3, 2); actx.fillRect(ox + 10, oy + 8, 3, 2);  // brazos
+    actx.fillRect(ox + 3, oy + 6, 1, 4); actx.fillRect(ox + 12, oy + 8, 1, 4);
+    actx.fillStyle = css(220, 230, 180); for (let y = 2; y < 14; y += 3) px(ox, oy, 8, y, 220, 230, 180);  // espinas
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1726,6 +1859,17 @@ const TILE_MAP = {
   [B.TORCH]:   { all: 49 },
   [B.LADDER]:  { all: 50 },
   [B.LADDERS]: { all: 51 },
+  [B.PINELEAVES]:  { all: 52 },
+  [B.BIRCHLOG]:    { top: 6, bottom: 6, side: 53 },
+  [B.BIRCHLEAVES]: { all: 54 },
+  [B.APPLELEAVES]: { all: 55 },
+  [B.PALMLEAVES]:  { all: 56 },
+  [B.FLOWER_R]:    { all: 57 },
+  [B.FLOWER_Y]:    { all: 58 },
+  [B.MUSH_RED]:    { all: 59 },
+  [B.MUSH_BROWN]:  { all: 60 },
+  [B.BERRYBUSH]:   { all: 61 },
+  [B.CACTUS]:      { all: 62 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -2170,9 +2314,10 @@ const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
 // golpes necesarios por bloque: cada clic es un golpe
 function hitsFor(id, tool) {
   let base, match;
-  if (isPlant(id) || isLadder(id) || id === B.TORCH || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW || id === B.WOOL) return 1;
+  if (isPlant(id) || isLadder(id) || id === B.TORCH || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW || id === B.WOOL
+      || id === B.PINELEAVES || id === B.BIRCHLEAVES || id === B.APPLELEAVES || id === B.PALMLEAVES) return 1;
   if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW || id === B.FARMLAND) { base = 2; match = 'shovel'; }
-  else if (id === B.LOG || id === B.MLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || id === B.BED || isDoorId(id)) { base = 4; match = 'axe'; }
+  else if (id === B.LOG || id === B.MLOG || id === B.BIRCHLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || id === B.BED || isDoorId(id)) { base = 4; match = 'axe'; }
   else if (id === B.OBSIDIAN) { base = 14; match = 'pick'; }   // muy resistente
   else if (id === B.MITHRIL) { base = 9; match = 'pick'; }
   else { base = 6; match = 'pick'; }   // piedra y similares
@@ -2264,6 +2409,8 @@ function harvestCrop(id) {
   else if (id === B.BARLEYY) addInv(I.BARLEY_SEED, 1);
   else if (id === B.ATHELAS) { addInv(I.ATHELAS_LEAF, 1); toast('Recoges hojas de athelas'); }
   else if (id === B.MSPROUT) addInv(I.MALLORN_NUT, 1);
+  else if (id === B.BERRYBUSH) { addInv(I.BERRIES, 1 + (r() < 0.6 ? 1 : 0)); toast('Recoges bayas del bosque'); }
+  else if (id === B.FLOWER_R || id === B.FLOWER_Y || id === B.MUSH_RED || id === B.MUSH_BROWN || id === B.CACTUS) addInv(id, 1);  // decoración: se recoge tal cual
 }
 
 function completeBreak(hit) {
@@ -2278,6 +2425,7 @@ function completeBreak(hit) {
   }
   if (hit.id === B.GRASS && Math.random() < 0.35)            // semillas silvestres
     addInv(Math.random() < 0.5 ? I.PIPE_SEED : I.BARLEY_SEED, 1);
+  if (hit.id === B.APPLELEAVES && Math.random() < 0.28) spawnDrop(cx, cy, cz, I.APPLE, 1);   // el manzano da fruta
   const drop = DROPS[hit.id] !== undefined ? DROPS[hit.id] : hit.id;
   if (drop) spawnDrop(cx, cy, cz, drop, 1);
   playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
@@ -3635,6 +3783,15 @@ function drawItemIcon(g, id) {
   if (id === I.PIPE_LEAF) {
     g.fillStyle = '#6e7a3a'; g.beginPath(); g.ellipse(16, 16, 11, 6, 0.5, 0, 7); g.fill();
     g.strokeStyle = '#4a5526'; g.lineWidth = 1; g.beginPath(); g.moveTo(8, 22); g.lineTo(24, 10); g.stroke();
+  } else if (id === I.APPLE) {
+    g.fillStyle = '#cc2a26'; g.beginPath(); g.arc(13, 18, 6, 0, 7); g.arc(20, 18, 6, 0, 7); g.fill();
+    g.fillStyle = '#7a4a24'; g.fillRect(15, 7, 2, 6);                       // rabito
+    g.fillStyle = '#4a9a40'; g.beginPath(); g.ellipse(20, 9, 4, 2, 0.6, 0, 7); g.fill();   // hoja
+    g.fillStyle = 'rgba(255,170,160,.7)'; g.beginPath(); g.ellipse(12, 15, 2, 3, 0.4, 0, 7); g.fill();  // brillo
+  } else if (id === I.BERRIES) {
+    g.fillStyle = '#b8284a'; for (const [x, y] of [[11, 14], [19, 13], [15, 20], [22, 20]]) { g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
+    g.fillStyle = 'rgba(255,180,190,.7)'; for (const [x, y] of [[10, 13], [18, 12], [14, 19], [21, 19]]) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
+    g.fillStyle = '#3f8a44'; g.fillRect(15, 7, 2, 4);
   } else if (id === I.BARLEY_GRAIN) {
     g.fillStyle = '#d8b85e'; for (let i = 0; i < 5; i++) g.fillRect(8 + (i % 3) * 5, 9 + ((i / 3) | 0) * 7, 4, 6);
   } else if (id === I.PIPE_SEED || id === I.BARLEY_SEED) {
@@ -3841,6 +3998,8 @@ function renderInv() {
     { id: I.PIPE,         use: () => smokePipe(), label: 'Fumar' },
     { id: I.ALE,          use: () => drinkAle() },
     { id: I.GOLDEN_APPLE, use: () => { if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); heal(10); regenBuffTimer = 20; toast('La manzana de oro te restaura'); } }, label: 'Comer' },
+    { id: I.APPLE,        use: () => { if (inv[I.APPLE] > 0)   { removeInv(I.APPLE, 1);   heal(3); toast('Comes una manzana'); } }, label: 'Comer' },
+    { id: I.BERRIES,      use: () => { if (inv[I.BERRIES] > 0) { removeInv(I.BERRIES, 1); heal(2); toast('Comes unas bayas'); } }, label: 'Comer' },
   ];
   const useable = new Map(consumables.map(c => [c.id, c]));
   let anyObj = false;
@@ -3927,6 +4086,8 @@ const HELP_KB = [
   { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
   { k:['cofre','chest','almacen','guardar'], a:'Fabrica un <b>cofre</b> con 8 tablones. Colócalo y clic derecho para guardar materiales. ¡Cuidado, la madera arde!' },
   { k:['bote','barca','barco','navegar','remar','rio','anduin','cruzar','agua','boat'], a:'Fabrica un <b>bote</b> con 5 tablones (menú E). Selecciónalo en el cinturón y haz <b>clic derecho apuntando al agua</b> para botarlo; acércate y pulsa <b>E</b> para subir. Rema con WASD (vas más rápido que nadando). Pulsa <b>E</b> o <b>F</b> para desembarcar.' },
+  { k:['arbol','arboles','madera','pino','abedul','manzano','palmera','tronco','hojas','tree'], a:'Hay varios <b>árboles</b>: roble y abedul en la Comarca, mallorn dorado en Lothlórien, <b>pinos</b> en las montañas y <b>palmeras</b> en las playas de arena. Pica el <b>tronco</b> con el hacha para sacar madera y haz tablones en el menú E.' },
+  { k:['manzana','fruta','comida','comer','hambre','baya','bayas','seta','setas','flor','flores','cactus'], a:'Rompe las <b>hojas de manzano</b> para conseguir <b>manzanas</b>, y los <b>arbustos de bayas</b> para <b>bayas</b>: cómelas desde el inventario (E) para recuperar vida. También hay <b>flores</b>, <b>setas</b> y <b>cactus</b> que puedes recoger y replantar para decorar.' },
   { k:['puerta','door'], a:'Fabrica una <b>puerta</b> con 4 tablones. Clic derecho para abrirla y cerrarla.' },
   { k:['nazgul','jefe','espectro','morgul'], a:'El <b>Nazgûl</b> es un jefe rarísimo de la noche profunda; te paraliza de miedo. Derrótalo con la mejor espada y buena armadura para conseguir una <b>Hoja de Morgul</b>.' },
   { k:['enemigo','enemigos','orco','orcos','uruk','noche','monstruo','hostil'], a:'De <b>noche</b> aparecen orcos, uruk-hai y arañas (de día solo en Mordor). Llévalos a punta de espada. Sueltan <b>hierro negro</b>, ideal para la armadura más recia.' },
@@ -4451,7 +4612,7 @@ window.G = {
   breakAt(x, y, z) { completeBreak({ x, y, z, id: worldGetBlock(x, y, z) }); },
   openChest, renderInv, showScreen, selectSlot, tryPlace, swing, drops, toggleDoor, B, I,
   belt: () => ({ sel, mats: [...hotbarMats] }),
-  physics, keys,
+  physics, keys, heightAt, biomeAt, BIOME, updateSky,
   reacts: () => reactQueue.length,
   // vida y agricultura (para pruebas)
   hp: () => health, hurt: a => damage(a, 'test'), heal, poison, die,

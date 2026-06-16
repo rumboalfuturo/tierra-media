@@ -67,6 +67,12 @@ Las **espadas** ahora son **objetos del inventario**: al forjarlas se guardan en
 
 Construye un **bote** con **5 tablones** (menú E → 🔨 Fabricar). Es un objeto del inventario: ocupa un **hueco del cinturón**. Selecciónalo y haz **clic derecho apuntando al agua** para botarlo; luego **acércate y pulsa E** para subir. Rema con WASD —vas **bastante más rápido que nadando** y **no te hundes**—, y pulsa **E** o **F** para desembarcar. Ideal para cruzar el **Anduin** o los lagos.
 
+## 🌲 Árboles, flores y comida
+
+- **Más árboles**: además del roble y el mallorn dorado, ahora hay **abedules** (tronco blanco) y **manzanos** en la Comarca, **pinos** en las montañas y **palmeras** en las playas de arena.
+- **Manzanas**: rompe las **hojas de manzano** y a veces cae una **manzana**. **Bayas**: rompe los **arbustos de bayas** del bosque. Cómelas desde el inventario (E → 🎒, botón **Comer**) para **recuperar vida**.
+- **Plantas decorativas**: **amapolas**, **flores amarillas**, **setas** (rojas y pardas) y **cactus** (en la arena). Puedes **recogerlas y replantarlas** para decorar tus construcciones.
+
 ## 📜 Ayuda en el juego
 
 Pulsa **C** en cualquier momento para abrir el **chat de ayuda de Gandalf**: escribe tu pregunta («¿cómo mato una araña?», «¿cómo hago una armadura?», «¿cómo domo un caballo?»…) o toca una de las sugerencias, y te responde al instante. Funciona sin conexión (es una guía integrada).
