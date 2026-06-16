@@ -363,6 +363,7 @@
     <div class="panel" style="max-width:340px; background:transparent; border:none;">
       <button class="mbtn small" id="btn-pause-host" style="display:none;">🌐 Crear sala online</button>
       <button class="mbtn small" id="btn-copy" style="display:none;">📋 Copiar código</button>
+      <button class="mbtn small" id="btn-creative">🪶 Modo creativo: NO</button>
       <button class="mbtn small" id="btn-exit">💾 Guardar y salir al menú</button>
     </div>
     <div class="hint">W A S D · ESPACIO · SHIFT · clic izq: golpear · clic der: colocar · E: inventario · M: mapa · C: ayuda · <b>B: recetas</b> · V: cámara · R: spawn</div>
@@ -2174,6 +2175,8 @@ function resetWorld() {
   if (boatMesh) { scene.remove(boatMesh); boatMesh = null; }
   for (const b of boats) scene.remove(b.mesh);
   boats = []; player.boat = false;
+  weather = 'clear'; nextWeatherChange = 0; if (rainPts) rainPts.visible = false;
+  creative = false;
   sleeping = false; const sfx = $('fx-sleep'); if (sfx) sfx.style.opacity = 0;
   disposeSelfMesh();
   for (const id of [...avatars.keys()]) removeAvatar(id);
@@ -2185,6 +2188,7 @@ function resetWorld() {
 const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: false, mount: null, boat: false };
 let mountMesh = null;
 let camMode = 0, selfMesh = null;   // 0 = primera persona, 1 = tercera persona
+let creative = false;               // modo creativo: vuelo, invulnerable, romper al instante, bloques infinitos
 function buildSelfMesh() {
   const col = new THREE.Color(profile.color || '#4caf50');
   const g = new THREE.Group();
@@ -2230,7 +2234,27 @@ function moveAxis(axis, amount) {
   }
 }
 
+function creativeFly(dt) {                    // modo creativo: vuelo libre con colisión
+  const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight')) ? 9 : 9;
+  let f = 0, r = 0;
+  if (keys.has('KeyW')) f++; if (keys.has('KeyS')) f--;
+  if (keys.has('KeyD')) r++; if (keys.has('KeyA')) r--;
+  let dx = -Math.sin(yaw) * f + Math.cos(yaw) * r, dz = -Math.cos(yaw) * f - Math.sin(yaw) * r;
+  const L = Math.hypot(dx, dz); if (L > 0) { dx /= L; dz /= L; }
+  let vy = 0;
+  if (keys.has('Space')) vy += 1;
+  if (keys.has('ShiftLeft') || keys.has('ShiftRight')) vy -= 1;   // SHIFT desciende, ESPACIO asciende
+  const k = 1 - Math.exp(-12 * dt);
+  player.vx += (dx * speed - player.vx) * k;
+  player.vz += (dz * speed - player.vz) * k;
+  player.vy += (vy * speed - player.vy) * k;
+  player.onGround = false;
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(player.vx), Math.abs(player.vy), Math.abs(player.vz)) * dt / 0.4));
+  for (let i = 0; i < steps; i++) { moveAxis('x', player.vx * dt / steps); moveAxis('z', player.vz * dt / steps); moveAxis('y', player.vy * dt / steps); }
+  peakY = player.y; wasAir = false;            // nunca daño por caída
+}
 function physics(dt) {
+  if (creative) { creativeFly(dt); return; }
   const inFluid = isFluid(blockAtF(player.x, player.y + 0.4, player.z));
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
   let speed = inFluid ? 2.8 : sprint ? 7.0 : 4.3;
@@ -2502,10 +2526,10 @@ function swing(now) {
   const hit = raycast(6);
   if (!hit) { digState = null; hideDigbar(); return; }
   if (hit.id === B.FIRE) { playerSetBlock(hit.x, hit.y, hit.z, B.AIR); digState = null; return; }  // apagar fuego
-  if (hit.id === B.BEDROCK) { digState = null; hideDigbar(); return; }
-  // la roca profunda solo cede ante un pico de metal del nivel adecuado
+  if (hit.id === B.BEDROCK) { digState = null; hideDigbar(); return; }   // la roca madre es indestructible
+  // la roca profunda solo cede ante un pico de metal del nivel adecuado (en creativo se ignora)
   const req = PICK_REQ[hit.id];
-  if (req) {
+  if (req && !creative) {
     const have = currentTool() === 'pick' ? (toolTier.pick || 'base') : 'none';
     if (TIER_ORD[have] < TIER_ORD[req]) {
       toast('Roca demasiado dura — necesitas un pico de ' + NAME_TIER[req] + ' o mejor');
@@ -2520,6 +2544,7 @@ function swing(now) {
     if (withTool < hitsFor(hit.id, '_'))                 // herramienta adecuada → mejora por nivel de metal
       need = Math.max(1, Math.round(withTool * TIER_FACTOR[toolTier[tool] || 'base']));
     if (strengthTimer > 0) need = Math.max(1, Math.ceil(need / 2));   // la cerveza da fuerza
+    if (creative) need = 1;                              // creativo: rompe al instante
     digState = { key, hits: 0, need };
   }
   digState.hits++;
@@ -2619,7 +2644,7 @@ function tryPlace(initial) {
     const okSoil = seed.on === 'farm' ? hit.id === B.FARMLAND : (hit.id === B.GRASS || hit.id === B.DIRT || hit.id === B.FARMLAND);
     if (!okSoil) { if (initial) toast(seed.on === 'farm' ? 'Necesitas tierra arada (pala + clic derecho)' : 'Plántalo en hierba o tierra'); return; }
     if (worldGetBlock(hit.x, hit.y + 1, hit.z) !== B.AIR) return;
-    removeInv(mat, 1);
+    if (!creative) removeInv(mat, 1);
     playerSetBlock(hit.x, hit.y + 1, hit.z, seed.plant);
     if (initial) toast('Plantado — dale tiempo para crecer');
     return;
@@ -2630,7 +2655,7 @@ function tryPlace(initial) {
   if (cur === -1) return;
   if (cur !== B.AIR && !isFluid(cur) && cur !== B.FIRE && !isPlant(cur)) return;
   if (isSolid(mat) && intersectsPlayer(px, py, pz)) return;
-  removeInv(mat, 1);
+  if (!creative) removeInv(mat, 1);
   if (mat === B.CHEST) { chests.set(px + ',' + py + ',' + pz, {}); broadcastChest(px + ',' + py + ',' + pz, {}); }
   let placed = mat;
   if (mat === B.DOORX) {                      // orientar la puerta según hacia dónde miras
@@ -2778,7 +2803,7 @@ function renderHealth() {
 }
 function flashHurt() { const e = $('fx-hurt'); e.style.opacity = 0.9; setTimeout(() => e.style.opacity = 0, 120); }
 function damage(amt, cause) {
-  if (health <= 0 || !inWorld || godmode) return;
+  if (health <= 0 || !inWorld || godmode || creative) return;
   const a = ARMOR[armorTier];
   if (a.fireproof && (cause === 'lava' || cause === 'fire')) return;        // mithril: inmune al fuego y la lava
   if (cause === 'lava' || cause === 'fire' || cause === 'fall' || cause === 'mob')
@@ -3437,7 +3462,7 @@ function netTickStart() {
     if (isHost && conns.size) {
       broadcast({ t: 'ppos', id: 'H', x: player.x, y: player.y, z: player.z, yaw, pitch });
       if (mobs.size) broadcast({ t: 'mobs', list: mobSnapshot() });
-      if (++dayTick % 50 === 0) broadcast({ t: 'day', dayT });
+      if (++dayTick % 50 === 0) { broadcast({ t: 'day', dayT }); broadcast({ t: 'weather', w: weather }); }
     } else if (isGuest && hostConn && hostConn.open) {
       hostConn.send({ t: 'pos', x: player.x, y: player.y, z: player.z, yaw, pitch });
     }
@@ -3601,6 +3626,8 @@ function onGuestData(m, code) {
     toast('Botín: ' + m.items.map(([id, n]) => n + '× ' + NAMES[id]).join(', '));
   } else if (m.t === 'day') {
     dayT = m.dayT;
+  } else if (m.t === 'weather') {
+    setWeather(m.w);
   }
 }
 
@@ -3651,6 +3678,7 @@ function saveWorld() {
     crops: cropList,
     gear: { tool: toolTier, armor: armorTier },
     quest: { idx: questIdx, flags: questFlags },
+    creative,
   });
   currentWorld.last = Date.now();
   const i = worlds.findIndex(w => w.id === currentWorld.id);
@@ -3733,6 +3761,7 @@ function startWorld(meta, data, mode) {
   questFlags.chestUsed = !!data?.quest?.flags?.chestUsed;
   questFlags.caveExplored = !!data?.quest?.flags?.caveExplored;
   questT = 0;
+  creative = !!data?.creative; updateCreativeBtn();
   // reconstruir las antorchas guardadas (para el anti-aparición)
   torches.clear();
   for (const [ck, m] of editsByChunk) { const [cx, cz] = ck.split(',').map(Number);
@@ -3879,6 +3908,17 @@ $('scr-pause').addEventListener('click', e => {
   if (inWorld) canvas.requestPointerLock();
 });
 $('btn-exit').onclick = () => exitWorld();
+$('btn-creative').onclick = () => toggleCreative();
+function updateCreativeBtn() { const b = $('btn-creative'); if (b) b.textContent = creative ? '🪶 Modo creativo: SÍ' : '🪶 Modo creativo: NO'; }
+function toggleCreative() {
+  creative = !creative;
+  player.vy = 0;
+  if (creative) {
+    for (const id of MATERIALS) if (!(inv[id] > 0)) inv[id] = 99;   // todos los bloques para construir sin límite
+    toast('🪶 Modo creativo ACTIVADO — vuela (ESPACIO sube · SHIFT baja), invulnerable, rompes al instante, bloques infinitos');
+  } else { toast('Modo creativo desactivado'); }
+  refreshHotbar(); saveDirty = true; updateCreativeBtn();
+}
 $('btn-pause-host').onclick = () => { hostGame(); refreshPause(); };
 $('btn-copy').onclick = () => {
   if (roomCode) navigator.clipboard?.writeText(roomCode).then(() => toast('Código copiado: ' + roomCode));
@@ -4583,7 +4623,7 @@ function updateHUD(now) {
   coordsEl.textContent = `x ${player.x.toFixed(0)}  y ${player.y.toFixed(0)}  z ${player.z.toFixed(0)}`;
   if (isNight() && !nightWarned) { nightWarned = true; toast('Cae la noche… los enemigos acechan. ¡Empuña tus armas!'); }
   else if (isDayTime() && nightWarned) nightWarned = false;
-  if (player.y < 13 && isSolid(worldGetBlock(Math.floor(player.x), Math.floor(player.y - 1), Math.floor(player.z)))) questFlags.caveExplored = true;
+  if (player.y < heightAt(Math.floor(player.x), Math.floor(player.z)) - 22 && isSolid(worldGetBlock(Math.floor(player.x), Math.floor(player.y - 1), Math.floor(player.z)))) questFlags.caveExplored = true;
   updateQuests(now);
 }
 
@@ -4677,6 +4717,44 @@ const COL_DAWN = new THREE.Color(0xd9854e), COL_MORDOR = new THREE.Color(0x35221
 const _sky = new THREE.Color();
 let fogNear = RD * 16 * 0.62, fogFar = RD * 16 * 1.05;
 
+/* ----- clima: despejado / lluvia / niebla (autoritativo del anfitrión) ----- */
+let weather = 'clear';
+let nextWeatherChange = 0;
+const COL_RAIN = new THREE.Color(0x5a6473), COL_FOG = new THREE.Color(0x9aa0a6);
+function setWeather(w) {
+  if (w === weather) return;
+  weather = w;
+  toast(w === 'rain' ? '🌧 Empieza a llover' : w === 'fog' ? '🌫 Se levanta la niebla' : '☀ El cielo se despeja');
+}
+function maybeChangeWeather(now) {
+  if (isGuest) return;
+  if (now < nextWeatherChange) { return; }
+  nextWeatherChange = now + (60 + Math.random() * 150) * 1000;   // 1–3.5 min por estado
+  const r = Math.random();
+  const w = r < 0.62 ? 'clear' : r < 0.85 ? 'rain' : 'fog';
+  setWeather(w);
+  if (isHost) broadcast({ t: 'weather', w });
+}
+let rainPts = null;
+function buildRain() {
+  const N = 800, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 32; pos[i * 3 + 1] = Math.random() * 22 - 4; pos[i * 3 + 2] = (Math.random() - 0.5) * 32; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xa9c0dc, size: 0.13, transparent: true, opacity: 0.55, depthWrite: false, fog: false });
+  rainPts = new THREE.Points(geo, mat); rainPts.visible = false; rainPts.frustumCulled = false; scene.add(rainPts);
+}
+function updateRain(dt) {
+  if (!rainPts) return;
+  const on = weather === 'rain' && inWorld;
+  if (rainPts.visible !== on) rainPts.visible = on;
+  if (!on) return;
+  const a = rainPts.geometry.attributes.position.array;
+  for (let i = 1; i < a.length; i += 3) { a[i] -= 26 * dt; if (a[i] < -10) a[i] = 14 + Math.random() * 6; }
+  rainPts.geometry.attributes.position.needsUpdate = true;
+  rainPts.position.set(player.x, player.y, player.z);
+}
+buildRain();
+
 function updateSky(dt, time) {
   dayT = (dayT + dt / DAY_LEN) % 1;
   const ang = dayAngle(dayT);
@@ -4692,13 +4770,17 @@ function updateSky(dt, time) {
   if (hereBiome === BIOME.MORDOR) { _sky.lerp(COL_MORDOR, 0.82); tNear = 14; tFar = 62; }
   else if (hereBiome === BIOME.MARSH) { _sky.lerp(COL_MARSH, 0.5); tNear = 8; tFar = 40; }    // niebla espesa de pantano
 
+  let wDim = 1;                                          // efecto del clima sobre cielo, niebla y luz
+  if (weather === 'rain') { _sky.lerp(COL_RAIN, 0.55); tNear *= 0.62; tFar *= 0.62; wDim = 0.5; }
+  else if (weather === 'fog') { _sky.lerp(COL_FOG, 0.6); tNear = Math.min(tNear, 6); tFar = Math.min(tFar, 32); wDim = 0.8; }
+
   const lk = 1 - Math.exp(-1.6 * dt);
   skyColor.lerp(_sky, lk);
   fogNear = lerp(fogNear, tNear, lk);
   fogFar = lerp(fogFar, tFar, lk);
   scene.fog.near = fogNear; scene.fog.far = fogFar;
 
-  dirLight.intensity = s > 0 ? 0.35 + 2.0 * s : 0.18;
+  dirLight.intensity = (s > 0 ? 0.35 + 2.0 * s : 0.18) * wDim;
   const ld = s > 0 ? 1 : -1;
   dirLight.position.copy(camera.position).addScaledVector(sunDir, 180 * ld);
   dirLight.target.position.copy(camera.position);
@@ -4735,8 +4817,9 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); }
+    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); maybeChangeWeather(now); }
     updateMobs(dt, now);
+    updateRain(dt);
     if (player.mount && mountMesh) { mountMesh.position.set(player.x, player.y, player.z); mountMesh.rotation.y = yaw; }
     if (player.boat && boatMesh) { boatMesh.position.set(player.x, player.y - 0.3, player.z); boatMesh.rotation.y = yaw; }
     updateDrops(dt, now);
@@ -4818,6 +4901,8 @@ window.G = {
   setCam(m) { camMode = m; }, fluids: () => ({ queue: fluidQ.length, niveles: fluidLvl.size }),
   sleep: sleepInBed, sleeping: () => sleeping, interactAnimal,
   setDayRaw(t) { dayT = t; }, dayInfo: () => ({ dayT, sunY: sunY(), noche: isNight(), len: DAY_LEN }),
+  weather: () => weather, setWeather, rainVisible: () => !!(rainPts && rainPts.visible),
+  toggleCreative, creative: () => creative,
   god: v => godmode = v, freeze: v => mobsFrozen = v,
   findOre(id) { for (const ch of chunks.values()) for (let i = 0; i < ch.data.length; i++) if (ch.data[i] === id) { const lx = i % 16, lz = ((i / 16) | 0) % 16, ly = (i / 256) | 0; return { x: ch.cx * 16 + lx, y: ly, z: ch.cz * 16 + lz }; } return null; },
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),

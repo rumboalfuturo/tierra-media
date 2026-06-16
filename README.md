@@ -73,6 +73,12 @@ Construye un **bote** con **5 tablones** (menú E → 🔨 Fabricar). Es un obje
 - **Manzanas**: rompe las **hojas de manzano** y a veces cae una **manzana**. **Bayas**: rompe los **arbustos de bayas** del bosque. Cómelas desde el inventario (E → 🎒, botón **Comer**) para **recuperar vida**.
 - **Plantas decorativas**: **amapolas**, **flores amarillas**, **setas** (rojas y pardas) y **cactus** (en la arena). Puedes **recogerlas y replantarlas** para decorar tus construcciones.
 
+## 🐾 Fauna, clima y modo creativo
+
+- **Más animales**: por la Comarca y los bosques pastan **vacas, cerdos, gallinas, ciervos y zorros** (caza con clic izquierdo: sueltan **carne** que puedes comer para curarte). Hay **peces** nadando en lagos y ríos, **pájaros** volando, y **perros** que puedes **domar con grano de cebada** (clic derecho) para que **te sigan** a todas partes.
+- **Clima**: el tiempo cambia solo entre **despejado**, **lluvia** 🌧 (con gotas y cielo gris) y **niebla** 🌫 (que acorta la visión). En multijugador, el anfitrión marca el clima para los dos.
+- **Modo creativo** 🪶: ábrelo desde el menú **Esc → «Modo creativo»**. Te permite **volar** (ESPACIO sube, SHIFT baja), ser **invulnerable**, **romper cualquier bloque al instante** y **construir con bloques infinitos** (tienes todos los materiales). Vuelve a pulsarlo para desactivarlo. Se guarda por mundo.
+
 ## ⛏ Minería profunda y diamantes
 
 - **El mundo es muy profundo**: hay unos **200 niveles bajo el suelo** hasta la roca madre.
