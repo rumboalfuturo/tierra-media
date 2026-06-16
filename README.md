@@ -32,6 +32,8 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 | E | inventario y fabricación |
 | M | mapa de la Tierra Media |
 | C | ayuda de Gandalf (chat de preguntas) |
+| E | (junto a un bote) subir al bote · (en el bote) desembarcar |
+| F | bajar de la montura o del bote |
 | V | cambiar cámara (1ª / 3ª persona) |
 | R | volver a La Comarca |
 | Esc | menú |
@@ -60,6 +62,10 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 ## ⚔ Armas en el cinturón
 
 Las **espadas** ahora son **objetos del inventario**: al forjarlas se guardan en tu mochila. Asígnalas a un **hueco del cinturón (6–9)** en el menú E (pestaña 🎒) — aparecen resaltadas en rojo — y **selecciona ese hueco** para empuñarlas. Atacas con el arma que lleves en la mano; sin arma, golpeas con los puños (poco daño). La **Hoja de Morgul** también se empuña así.
+
+## 🛶 Botes
+
+Construye un **bote** con **5 tablones** (menú E → 🔨 Fabricar). Es un objeto del inventario: ocupa un **hueco del cinturón**. Selecciónalo y haz **clic derecho apuntando al agua** para botarlo; luego **acércate y pulsa E** para subir. Rema con WASD —vas **bastante más rápido que nadando** y **no te hundes**—, y pulsa **E** o **F** para desembarcar. Ideal para cruzar el **Anduin** o los lagos.
 
 ## 📜 Ayuda en el juego
 

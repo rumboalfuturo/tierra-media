@@ -432,6 +432,7 @@ const I = {
   WOLF_PELT:215, SPIDER_SILK:216, URUK_BANNER:217, MORGUL_BLADE:218, GOLDEN_APPLE:219,
   SHEARS:220,
   SW_IRON:221, SW_STEEL:222, SW_SILVER:223, SW_BIRON:224, SW_MITHRIL:225,   // espadas (objetos del cinturón)
+  BOAT:226,
 };
 // objeto-arma → nivel de daño; la Hoja de Morgul también es un arma empuñable
 const WEAPON_ITEM = { [I.SW_IRON]:'iron', [I.SW_STEEL]:'steel', [I.SW_SILVER]:'silver', [I.SW_BIRON]:'blackiron', [I.SW_MITHRIL]:'mithril', [I.MORGUL_BLADE]:'morgul' };
@@ -443,7 +444,7 @@ const PLANTABLE = {
   [I.BARLEY_SEED]: { plant: B.BARLEYY,   on: 'farm' },
   [I.MALLORN_NUT]: { plant: B.MSPROUT,   on: 'soil' },
 };
-const beltable = id => MATERIALS.includes(id) || PLANTABLE[id] !== undefined || isWeapon(id);
+const beltable = id => MATERIALS.includes(id) || PLANTABLE[id] !== undefined || isWeapon(id) || id === I.BOAT;
 const NAMES = {
   [B.GRASS]:'Hierba', [B.DIRT]:'Tierra', [B.STONE]:'Piedra', [B.SNOW]:'Nieve',
   [B.LOG]:'Tronco de roble', [B.LEAVES]:'Hojas de roble', [B.MLOG]:'Tronco de mallorn',
@@ -473,6 +474,7 @@ const NAMES = {
   [I.GOLDEN_APPLE]:'Manzana de oro', [I.SHEARS]:'Tijeras',
   [I.SW_IRON]:'Espada de hierro', [I.SW_STEEL]:'Espada de Gondor', [I.SW_SILVER]:'Daga élfica',
   [I.SW_BIRON]:'Cimitarra negra', [I.SW_MITHRIL]:'Espada de mithril',
+  [I.BOAT]:'Bote',
 };
 
 // herramientas (huecos 1-5 del cinturón) + 4 huecos de materiales (6-9)
@@ -1978,6 +1980,9 @@ function resetWorld() {
   clearDrops(); clearParticles(); clearMobs();
   if (mountMesh) { scene.remove(mountMesh); mountMesh = null; }
   player.mount = null; chests.delete('@bag');
+  if (boatMesh) { scene.remove(boatMesh); boatMesh = null; }
+  for (const b of boats) scene.remove(b.mesh);
+  boats = []; player.boat = false;
   sleeping = false; const sfx = $('fx-sleep'); if (sfx) sfx.style.opacity = 0;
   disposeSelfMesh();
   for (const id of [...avatars.keys()]) removeAvatar(id);
@@ -1986,7 +1991,7 @@ function resetWorld() {
 /* ============================================================
    JUGADOR
 ============================================================ */
-const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: false, mount: null };
+const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: false, mount: null, boat: false };
 let mountMesh = null;
 let camMode = 0, selfMesh = null;   // 0 = primera persona, 1 = tercera persona
 function buildSelfMesh() {
@@ -2044,6 +2049,11 @@ function physics(dt) {
   const mnt = player.mount && player.mount.def.mount;
   if (mnt) speed *= mnt.speed;               // la montura corre más
   if (worldGetBlock(Math.floor(player.x), Math.floor(player.y - 0.1), Math.floor(player.z)) === B.MUD) speed *= 0.5;  // el lodo frena
+  const boating = player.boat;
+  if (boating) {                             // el bote rema rápido por el agua, lento al arrastrarlo por tierra
+    const onWater = blockAtF(player.x, player.y - 0.05, player.z) === B.WATER;
+    speed = (onWater ? (sprint ? 8.5 : 6.5) : 2.6) * (fearTimer > 0 ? 0.6 : 1);
+  }
 
   let f = 0, r = 0;
   if (keys.has('KeyW')) f++; if (keys.has('KeyS')) f--;
@@ -2057,7 +2067,7 @@ function physics(dt) {
   player.vx += (dx * speed - player.vx) * k;
   player.vz += (dz * speed - player.vz) * k;
 
-  if (inFluid) {
+  if (inFluid && !boating) {
     const want = keys.has('Space') ? 3.5 : -2.0;
     player.vy += (want - player.vy) * (1 - Math.exp(-4 * dt));
   } else {
@@ -2085,6 +2095,17 @@ function physics(dt) {
     moveAxis('x', player.vx * dt / steps);
     moveAxis('z', player.vz * dt / steps);
     moveAxis('y', player.vy * dt / steps);
+  }
+
+  // flotabilidad del bote: descansa sobre la superficie del agua
+  if (boating) {
+    const fx = Math.floor(player.x), fz = Math.floor(player.z), fy = Math.floor(player.y);
+    let surf = -1;
+    for (let yy = fy + 1; yy >= fy - 2; yy--) { if (worldGetBlock(fx, yy, fz) === B.WATER) { surf = yy + 1; break; } }
+    if (surf >= 0 && player.y <= surf + 0.5) {
+      player.y = surf; if (player.vy < 0) player.vy = 0;
+      player.onGround = true; peakY = player.y; wasAir = false;
+    }
   }
 
   // daño por caída (el agua y la lava amortiguan)
@@ -2345,6 +2366,17 @@ function tryPlace(initial) {
   if (initial && !player.mount) {                 // interactuar con un animal que tengamos delante
     const animal = entityInCrosshair(3.2, m => m.def.passive);
     if (animal) { interactAnimal(animal); return; }
+  }
+  // botar un bote sobre el agua (el agua no la detecta el raycast normal)
+  if (!player.mount && !player.boat && sel >= TOOLS.length && hotbarMats[sel - TOOLS.length] === I.BOAT) {
+    if (!(inv[I.BOAT] > 0)) { if (initial) toast('No te queda ningún bote'); return; }
+    const wh = raycast(6, { fire: false, fluids: true });
+    if (!wh || wh.id !== B.WATER) { if (initial) toast('Apunta al agua para botar el bote'); return; }
+    let surfY = wh.y; while (worldGetBlock(wh.x, surfY + 1, wh.z) === B.WATER) surfY++;
+    removeInv(I.BOAT, 1);
+    placeBoat(wh.x + 0.5, surfY + 1, wh.z + 0.5);
+    if (initial) toast('Bote en el agua — acércate y pulsa E para subir');
+    return;
   }
   const hit = raycast(6, { fire: false });
   if (!hit) return;
@@ -3016,6 +3048,57 @@ function openMountBag() {
   openChest('@bag');
 }
 
+/* ----- botes: navegar por el agua ----- */
+let boats = [];        // botes botados en el mundo: { mesh, x, y, z }
+let boatMesh = null;   // bote que llevas montado
+
+function createBoatMesh() {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshLambertMaterial({ color: 0x6b4a2b });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x523a22 });
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.34, 1.5), wood); hull.position.y = 0.17; g.add(hull);
+  const rail = new THREE.BoxGeometry(0.14, 0.3, 1.5);
+  const r1 = new THREE.Mesh(rail, dark); r1.position.set(0.42, 0.36, 0); g.add(r1);
+  const r2 = new THREE.Mesh(rail, dark); r2.position.set(-0.42, 0.36, 0); g.add(r2);
+  const tip = new THREE.BoxGeometry(0.7, 0.32, 0.32);
+  const bow  = new THREE.Mesh(tip, dark); bow.position.set(0, 0.34, -0.78);  g.add(bow);    // proa hacia -z (delante)
+  const stern = new THREE.Mesh(tip, dark); stern.position.set(0, 0.34, 0.78); g.add(stern);
+  return g;
+}
+function placeBoat(x, y, z) {
+  const mesh = createBoatMesh();
+  mesh.position.set(x, y - 0.3, z);
+  scene.add(mesh);
+  boats.push({ mesh, x, y, z });
+}
+function nearestBoat(maxD) {
+  let best = null, bd = maxD;
+  for (const b of boats) {
+    const d = Math.hypot(b.x - player.x, b.y - player.y, b.z - player.z);
+    if (d < bd) { bd = d; best = b; }
+  }
+  return best;
+}
+function boardBoat(b) {
+  if (player.boat || player.mount) return;
+  scene.remove(b.mesh);
+  boats = boats.filter(x => x !== b);
+  player.boat = true;
+  player.x = b.x; player.y = b.y; player.z = b.z;
+  player.vx = player.vy = player.vz = 0;
+  if (boatMesh) scene.remove(boatMesh);
+  boatMesh = createBoatMesh(); scene.add(boatMesh);
+  toast('Navegas en el bote · WASD para remar · E o F para desembarcar');
+}
+function disembarkBoat() {
+  if (!player.boat) return;
+  if (boatMesh) { scene.remove(boatMesh); boatMesh = null; }
+  player.boat = false;
+  placeBoat(player.x, player.y, player.z);   // el bote se queda flotando donde estabas
+  player.y += 0.3;
+  toast('Desembarcas');
+}
+
 function trySpawnAnimal(now) {
   if (isGuest || !inWorld || godmode || mobsFrozen) return;
   if (now - lastAnimalSpawn < 2500) return;
@@ -3541,6 +3624,14 @@ function drawToolIcon(g, key) {
 function drawItemIcon(g, id) {
   g.clearRect(0, 0, 32, 32);
   if (id >= I.SW_IRON && id <= I.SW_MITHRIL) { drawSwordIcon(g, WEAPON_ITEM[id]); return; }   // espadas
+  if (id === I.BOAT) {                                   // bote
+    g.fillStyle = '#6b4a2b';
+    g.beginPath(); g.moveTo(3, 16); g.lineTo(29, 16); g.lineTo(25, 26); g.lineTo(7, 26); g.closePath(); g.fill();
+    g.fillStyle = '#523a22'; g.fillRect(3, 14, 26, 3);
+    g.fillStyle = '#8a6a3a'; g.fillRect(15, 7, 2, 9);    // mástil
+    g.fillStyle = '#cdbb8a'; g.beginPath(); g.moveTo(17, 8); g.lineTo(24, 13); g.lineTo(17, 14); g.closePath(); g.fill();   // vela
+    return;
+  }
   if (id === I.PIPE_LEAF) {
     g.fillStyle = '#6e7a3a'; g.beginPath(); g.ellipse(16, 16, 11, 6, 0.5, 0, 7); g.fill();
     g.strokeStyle = '#4a5526'; g.lineWidth = 1; g.beginPath(); g.moveTo(8, 22); g.lineTo(24, 10); g.stroke();
@@ -3727,7 +3818,7 @@ function renderInv() {
   const grid = $('invgrid');
   grid.innerHTML = '';
   let any = false;
-  for (const id of [I.SW_IRON, I.SW_STEEL, I.SW_SILVER, I.SW_BIRON, I.SW_MITHRIL, I.MORGUL_BLADE,
+  for (const id of [I.SW_IRON, I.SW_STEEL, I.SW_SILVER, I.SW_BIRON, I.SW_MITHRIL, I.MORGUL_BLADE, I.BOAT,
                     ...MATERIALS, I.PIPE_SEED, I.BARLEY_SEED, I.MALLORN_NUT]) {
     if (!(inv[id] > 0)) continue;
     any = true;
@@ -3737,6 +3828,7 @@ function renderInv() {
       toast(NAMES[id] + ' → hueco ' + (TOOLS.length + invSelSlot + 1));
     });
     if (isWeapon(id)) slot.style.borderColor = 'rgba(210,150,150,.6)';   // resaltar las armas
+    if (id === I.BOAT) slot.style.borderColor = 'rgba(140,180,210,.6)';   // bote en tono agua
     grid.appendChild(slot);
   }
   if (!any) grid.innerHTML = '<div class="empty">Aún no tienes materiales — mantén el clic izquierdo sobre un bloque para picarlo.</div>';
@@ -3794,6 +3886,8 @@ function renderInv() {
       go: () => { removeInv(B.PLANK, 3); addInv(B.LADDER, 4); toast('Has fabricado escaleras de madera  (colócalas y súbete pulsando W o ESPACIO)'); } },
     { label: '3 piedra labrada → 4 escaleras de piedra', can: inv[B.COBBLE] >= 3,
       go: () => { removeInv(B.COBBLE, 3); addInv(B.LADDERS, 4); toast('Has fabricado escaleras de piedra'); } },
+    { label: '5 tablones → 1 bote', can: inv[B.PLANK] >= 5,
+      go: () => { removeInv(B.PLANK, 5); addInv(I.BOAT, 1); toast('Has construido un bote  (selecciónalo en el cinturón y clic derecho sobre el agua para botarlo)'); } },
   ];
   for (const r of recipes) {
     const row = document.createElement('div');
@@ -3832,6 +3926,7 @@ const HELP_KB = [
   { k:['pipa','pipe','fumar'], a:'Fabrica una <b>pipa</b> con 4 tablones. Fúmala (con hierba para pipa) desde el inventario para recuperarte más rápido.' },
   { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
   { k:['cofre','chest','almacen','guardar'], a:'Fabrica un <b>cofre</b> con 8 tablones. Colócalo y clic derecho para guardar materiales. ¡Cuidado, la madera arde!' },
+  { k:['bote','barca','barco','navegar','remar','rio','anduin','cruzar','agua','boat'], a:'Fabrica un <b>bote</b> con 5 tablones (menú E). Selecciónalo en el cinturón y haz <b>clic derecho apuntando al agua</b> para botarlo; acércate y pulsa <b>E</b> para subir. Rema con WASD (vas más rápido que nadando). Pulsa <b>E</b> o <b>F</b> para desembarcar.' },
   { k:['puerta','door'], a:'Fabrica una <b>puerta</b> con 4 tablones. Clic derecho para abrirla y cerrarla.' },
   { k:['nazgul','jefe','espectro','morgul'], a:'El <b>Nazgûl</b> es un jefe rarísimo de la noche profunda; te paraliza de miedo. Derrótalo con la mejor espada y buena armadura para conseguir una <b>Hoja de Morgul</b>.' },
   { k:['enemigo','enemigos','orco','orcos','uruk','noche','monstruo','hostil'], a:'De <b>noche</b> aparecen orcos, uruk-hai y arañas (de día solo en Mordor). Llévalos a punta de espada. Sueltan <b>hierro negro</b>, ideal para la armadura más recia.' },
@@ -3884,6 +3979,7 @@ const RECIPE_BOOK = [
   { where: 'Menú E (🔨 Fabricar)', label: '4 Antorchas', needs: [[B.PLANK, 1]] },
   { where: 'Menú E (🔨 Fabricar)', label: '4 Escaleras de madera', needs: [[B.PLANK, 3]] },
   { where: 'Menú E (🔨 Fabricar)', label: '4 Escaleras de piedra', needs: [[B.COBBLE, 3]] },
+  { where: 'Menú E (🔨 Fabricar)', label: '1 Bote (navega por el agua)', needs: [[B.PLANK, 5]] },
   { where: 'En la forja', label: '1 Lingote de hierro', needs: [[B.IRONORE, 1]] },
   { where: 'En la forja', label: '1 Acero de Gondor', needs: [[I.IRON_INGOT, 2]] },
   { where: 'En la forja', label: '1 Lingote de mithril', needs: [[B.MITHRIL, 1]] },
@@ -4191,14 +4287,17 @@ document.addEventListener('keydown', e => {
   }
   if (e.code === 'KeyE' && inWorld) {
     if (locked) {
-      if (player.mount && player.mount.def.mount.storage) openMountBag();   // alforjas del poni
+      const nb = !player.boat && !player.mount ? nearestBoat(2.8) : null;
+      if (player.boat) disembarkBoat();                                     // bajar del bote
+      else if (nb) boardBoat(nb);                                           // subir a un bote cercano
+      else if (player.mount && player.mount.def.mount.storage) openMountBag();   // alforjas del poni
       else { invOpen = true; document.exitPointerLock(); }
     }
     else if (invOpen) { invOpen = false; canvas.requestPointerLock(); }
     else if (openChestKey) { openChestKey = null; canvas.requestPointerLock(); }
     else if (forgeOpen) { forgeOpen = false; canvas.requestPointerLock(); }
   }
-  if (e.code === 'KeyF' && locked && player.mount) dismount();
+  if (e.code === 'KeyF' && locked) { if (player.mount) dismount(); else if (player.boat) disembarkBoat(); }
   if (e.code === 'KeyV' && locked) { camMode = (camMode + 1) % 2; toast(camMode ? 'Cámara en 3ª persona' : 'Cámara en 1ª persona'); }
   if (e.code === 'KeyB' && inWorld) {
     if (locked) openRecipes();
@@ -4300,6 +4399,7 @@ function step(now) {
     if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); }
     updateMobs(dt, now);
     if (player.mount && mountMesh) { mountMesh.position.set(player.x, player.y, player.z); mountMesh.rotation.y = yaw; }
+    if (player.boat && boatMesh) { boatMesh.position.set(player.x, player.y - 0.3, player.z); boatMesh.rotation.y = yaw; }
     updateDrops(dt, now);
     updateParticles(dt);
     updateAvatars(dt);
@@ -4350,6 +4450,8 @@ window.G = {
   inv: () => ({ ...inv }), give(id, n) { addInv(id, n ?? 1); },
   breakAt(x, y, z) { completeBreak({ x, y, z, id: worldGetBlock(x, y, z) }); },
   openChest, renderInv, showScreen, selectSlot, tryPlace, swing, drops, toggleDoor, B, I,
+  belt: () => ({ sel, mats: [...hotbarMats] }),
+  physics, keys,
   reacts: () => reactQueue.length,
   // vida y agricultura (para pruebas)
   hp: () => health, hurt: a => damage(a, 'test'), heal, poison, die,
@@ -4370,6 +4472,9 @@ window.G = {
   mount: id => { const m = mobs.get(id); if (m) mountAnimal(m); },
   dismount, mounted: () => player.mount ? player.mount.type : null,
   animals: () => [...mobs.values()].filter(m => m.def.passive).map(m => ({ id: m.id, type: m.type, tame: !!m.tame })),
+  // botes (para pruebas)
+  boats: () => boats.map(b => ({ x: +b.x.toFixed(1), y: +b.y.toFixed(1), z: +b.z.toFixed(1) })),
+  placeBoat, boardBoat, disembarkBoat, nearestBoat, boating: () => !!player.boat,
   forceRender() { renderer.render(scene, camera); },
   setCam(m) { camMode = m; }, fluids: () => ({ queue: fluidQ.length, niveles: fluidLvl.size }),
   sleep: sleepInBed, sleeping: () => sleeping, interactAnimal,
