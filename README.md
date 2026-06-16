@@ -73,6 +73,15 @@ Construye un **bote** con **5 tablones** (menú E → 🔨 Fabricar). Es un obje
 - **Manzanas**: rompe las **hojas de manzano** y a veces cae una **manzana**. **Bayas**: rompe los **arbustos de bayas** del bosque. Cómelas desde el inventario (E → 🎒, botón **Comer**) para **recuperar vida**.
 - **Plantas decorativas**: **amapolas**, **flores amarillas**, **setas** (rojas y pardas) y **cactus** (en la arena). Puedes **recogerlas y replantarlas** para decorar tus construcciones.
 
+## ⛏ Minería profunda y diamantes
+
+- **El mundo es muy profundo**: hay unos **200 niveles bajo el suelo** hasta la roca madre.
+- **La roca endurece con la profundidad**: **piedra** arriba → **roca profunda** → **roca abisal** al fondo.
+- **Picos por niveles**: un **pico de piedra** NO rompe la roca profunda; necesitas uno de **hierro**, y de **acero** para la roca abisal. (Consigue hierro cerca de la superficie y fórjate mejores picos en la forja.)
+- **Minerales por profundidad**: hierro y plata arriba, oro a media altura, y muy abajo **mithril** y **diamantes**.
+- **Diamantes** 💎: aparecen muy hondo (por debajo de unos 80 niveles). Con ellos forjas las **mejores herramientas** y un **bloque de diamante** (9 diamantes; menú E).
+- Las **escaleras** y **antorchas** ahora se pueden **quitar** apuntándolas y dándoles con cualquier herramienta.
+
 ## 📜 Ayuda en el juego
 
 Pulsa **C** en cualquier momento para abrir el **chat de ayuda de Gandalf**: escribe tu pregunta («¿cómo mato una araña?», «¿cómo hago una armadura?», «¿cómo domo un caballo?»…) o toca una de las sugerencias, y te responde al instante. Funciona sin conexión (es una guía integrada).

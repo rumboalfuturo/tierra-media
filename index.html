@@ -387,9 +387,12 @@ window.addEventListener('error', e => {
 ============================================================ */
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
-const WH = 64;              // altura del mundo
+const WH = 256;             // altura del mundo (subsuelo muy profundo: ~200 niveles bajo la superficie)
 const RD = 5;               // distancia de renderizado en chunks
-const WATER_Y = 16;
+const YBASE = 184;          // toda la superficie y los monumentos se elevan para dejar ~200 niveles de mina debajo
+const WATER_Y = 16 + YBASE;
+const SNOW_H = 34 + YBASE;  // a partir de esta altura, cumbres nevadas
+const ROCK_H = 27 + YBASE;  // a partir de esta altura, roca desnuda (sin árboles ni flora)
 // el mapa de la Tierra Media (x crece hacia el este, z hacia el sur)
 const SPAWN = { x: 8.5, z: 8.5 };          // La Comarca
 const HOUSE = { x: 20, z: 10 };            // agujero hobbit
@@ -417,6 +420,8 @@ const B = {
   // árboles y plantas nuevos (Fase 4)
   PINELEAVES:51, BIRCHLOG:52, BIRCHLEAVES:53, APPLELEAVES:54, PALMLEAVES:55,
   FLOWER_R:56, FLOWER_Y:57, MUSH_RED:58, MUSH_BROWN:59, BERRYBUSH:60, CACTUS:61,
+  // subsuelo profundo (Fase: minería)
+  DEEPSTONE:62, HARDROCK:63, DIAMOND_ORE:64, DIAMOND_BLOCK:65,
 };
 const isLadder = id => id === B.LADDER || id === B.LADDERS;
 const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
@@ -438,6 +443,7 @@ const I = {
   SW_IRON:221, SW_STEEL:222, SW_SILVER:223, SW_BIRON:224, SW_MITHRIL:225,   // espadas (objetos del cinturón)
   BOAT:226,
   APPLE:227, BERRIES:228,   // frutas comestibles (Fase 4)
+  DIAMOND:229,              // gema del subsuelo profundo
 };
 // objeto-arma → nivel de daño; la Hoja de Morgul también es un arma empuñable
 const WEAPON_ITEM = { [I.SW_IRON]:'iron', [I.SW_STEEL]:'steel', [I.SW_SILVER]:'silver', [I.SW_BIRON]:'blackiron', [I.SW_MITHRIL]:'mithril', [I.MORGUL_BLADE]:'morgul' };
@@ -471,7 +477,9 @@ const NAMES = {
   [B.APPLELEAVES]:'Hojas de manzano', [B.PALMLEAVES]:'Hojas de palmera',
   [B.FLOWER_R]:'Amapolas', [B.FLOWER_Y]:'Flores amarillas', [B.MUSH_RED]:'Seta roja',
   [B.MUSH_BROWN]:'Seta parda', [B.BERRYBUSH]:'Arbusto de bayas', [B.CACTUS]:'Cactus',
-  [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque',
+  [B.DEEPSTONE]:'Roca profunda', [B.HARDROCK]:'Roca abisal', [B.DIAMOND_ORE]:'Mineral de diamante',
+  [B.DIAMOND_BLOCK]:'Bloque de diamante',
+  [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque', [I.DIAMOND]:'Diamante',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
@@ -502,18 +510,22 @@ const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.
                    B.GOLDBLOCK, B.MOSSYSTONE, B.BASALT, B.ASH, B.MUD, B.SOULFIRE, B.OBSIDIAN, B.WOOL, B.BED,
                    B.TORCH, B.LADDER, B.LADDERS, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA,
                    B.BIRCHLOG, B.PINELEAVES, B.BIRCHLEAVES, B.APPLELEAVES, B.PALMLEAVES,
-                   B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.CACTUS];
+                   B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.CACTUS,
+                   B.DEEPSTONE, B.HARDROCK, B.DIAMOND_BLOCK];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
                 [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
-                [B.FARMLAND]: B.DIRT, [B.MGLOW]: B.MLEAVES };
+                [B.FARMLAND]: B.DIRT, [B.MGLOW]: B.MLEAVES, [B.DIAMOND_ORE]: I.DIAMOND };
+// roca que solo cede ante un pico de cierto nivel de metal
+const PICK_REQ = { [B.DEEPSTONE]: 'iron', [B.HARDROCK]: 'steel', [B.DIAMOND_ORE]: 'iron' };
+const TIER_ORD = { none: -1, base: 0, iron: 1, steel: 2, silver: 1, blackiron: 2, mithril: 3, diamond: 4 };
 const FLAMMABLE = new Set([B.GRASS, B.LEAVES, B.MLEAVES, B.LOG, B.MLOG, B.PLANK, B.CHEST,
                            B.DOORX, B.DOORXO, B.DOORZ, B.DOORZO,
                            B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.MSPROUT, B.BARREL,
                            B.BIRCHLOG, B.PINELEAVES, B.BIRCHLEAVES, B.APPLELEAVES, B.PALMLEAVES]);
 
 // metalurgia: niveles de herramienta, armadura y arma
-const TIER_FACTOR = { base:1, iron:0.7, steel:0.5, mithril:0.35 };       // multiplica los golpes necesarios
+const TIER_FACTOR = { base:1, iron:0.7, steel:0.5, mithril:0.35, diamond:0.28 };       // multiplica los golpes necesarios
 const ARMOR = {
   none:      { red:0,    slow:0,     fireproof:false },
   iron:      { red:0.25, slow:0,     fireproof:false },
@@ -521,7 +533,7 @@ const ARMOR = {
   blackiron: { red:0.65, slow:0.18,  fireproof:false },   // máxima protección, pero pesa
   mithril:   { red:0.55, slow:-0.12, fireproof:true  },   // ligera como pluma, inmune al fuego
 };
-const NAME_TIER   = { base:'piedra', none:'—', iron:'hierro', steel:'acero', silver:'plata', blackiron:'hierro negro', mithril:'mithril', morgul:'Morgul' };
+const NAME_TIER   = { base:'piedra', none:'—', iron:'hierro', steel:'acero', silver:'plata', blackiron:'hierro negro', mithril:'mithril', morgul:'Morgul', diamond:'diamante' };
 const WEAPON_DMG  = { none:1, iron:3, steel:5, silver:4, blackiron:6, mithril:7, morgul:9 };
 const WEAPON_NAME = { none:'puños', iron:'espada de hierro', steel:'espada de Gondor', silver:'daga élfica', blackiron:'cimitarra negra', mithril:'espada de mithril', morgul:'hoja de Morgul' };
 // la daga élfica (plata) y la hoja de Morgul golpean más fuerte a ciertos enemigos
@@ -630,8 +642,8 @@ function heightAt(wx, wz) {
   }
   // las Ciénagas de los Muertos: tierra hundida y encharcada
   const dMarsh = Math.hypot(wx - MARSH.x, wz - MARSH.z);
-  if (dMarsh < MARSH.r) h = lerp(WATER_Y - 1 + fbm(wx * 0.08, wz * 0.08, SEED + 6, 2) * 1.5, h, smoothstep(MARSH.r - 14, MARSH.r, dMarsh));
-  return Math.max(2, Math.min(WH - 10, Math.floor(h)));
+  if (dMarsh < MARSH.r) h = lerp(15 + fbm(wx * 0.08, wz * 0.08, SEED + 6, 2) * 1.5, h, smoothstep(MARSH.r - 14, MARSH.r, dMarsh));
+  return Math.max(2, Math.min(WH - 10, Math.floor(h) + YBASE));   // toda la superficie elevada: ~200 niveles de subsuelo
 }
 
 /* ============================================================
@@ -998,17 +1010,17 @@ function genChunk(cx, cz) {
       else if (y === ih) {
         if (biome === BIOME.MARSH) id = B.MUD;
         else if (biome === BIOME.MORDOR) id = hash3(wx, 1, wz, SEED + 58) < 0.3 ? B.ASH : B.MROCK;
-        else if (ih >= 34) id = B.SNOW;
-        else if (ih >= 27) id = B.STONE;
+        else if (ih >= SNOW_H) id = B.SNOW;
+        else if (ih >= ROCK_H) id = B.STONE;
         else if (ih <= WATER_Y + 1) id = B.SAND;
         else id = B.GRASS;
       } else if (y >= ih - 3) {
         if (biome === BIOME.MARSH) id = B.MUD;
         else if (biome === BIOME.MORDOR) id = B.MROCK;
-        else if (ih >= 34 && y >= ih - 2) id = B.SNOW;
-        else id = ih >= 27 ? B.STONE : B.DIRT;
+        else if (ih >= SNOW_H && y >= ih - 2) id = B.SNOW;
+        else id = ih >= ROCK_H ? B.STONE : B.DIRT;
       } else {
-        id = oreAt(wx, y, wz, biome);
+        id = oreAt(wx, y, wz, biome, ih);
       }
       data[IDX(lx, y, lz)] = id;
     }
@@ -1039,13 +1051,21 @@ function genChunk(cx, cz) {
 }
 
 /* ----- vetas de mineral bajo tierra ----- */
-function oreAt(wx, y, wz, biome) {
-  if (y < 24 && hash3(wx, y, wz, SEED + 7) < 0.012) return B.MITHRIL;
-  if ((biome === BIOME.MORDOR || y <= 15) && hash3(wx, y, wz, SEED + 41) < 0.02) return B.BIRONORE;   // hierro negro
-  if (y < 30 && hash3(wx, y, wz, SEED + 42) < 0.006) return B.GOLDORE;
-  if ((biome === BIOME.SHIRE || biome === BIOME.LOTHLORIEN) && y >= 6 && y <= 30 && hash3(wx, y, wz, SEED + 43) < 0.008) return B.SILVERORE;
-  if (y >= 5 && hash3(wx, y, wz, SEED + 44) < 0.02) return B.IRONORE;
-  return B.STONE;
+function oreAt(wx, y, wz, biome, ih) {
+  const d = ih - y;                                   // profundidad bajo la superficie
+  // la roca endurece con la profundidad (pico de metal necesario más abajo)
+  const rock = d < 46 ? B.STONE : d < 116 ? B.DEEPSTONE : B.HARDROCK;
+  // gemas raras y profundas (un hash propio)
+  const r1 = hash3(wx, y, wz, SEED + 7);
+  if (d >= 80 && r1 < 0.007) return B.DIAMOND_ORE;                       // diamante, hondo
+  if (d >= 150 && r1 >= 0.007 && r1 < 0.020) return B.MITHRIL;           // mithril, muy hondo
+  // vetas de metal (otro hash, bandas disjuntas para no solaparse)
+  const r2 = hash3(wx, y, wz, SEED + 42);
+  if (d >= 4 && d < 95 && r2 < 0.020) return B.IRONORE;                  // hierro, somero-medio
+  if (d >= 22 && d < 140 && r2 >= 0.020 && r2 < 0.027) return B.GOLDORE; // oro, medio
+  if ((biome === BIOME.SHIRE || biome === BIOME.LOTHLORIEN) && d >= 6 && d < 60 && r2 >= 0.027 && r2 < 0.035) return B.SILVERORE;
+  if (((biome === BIOME.MORDOR) || d >= 95) && r2 >= 0.035 && r2 < 0.055) return B.BIRONORE;   // hierro negro
+  return rock;
 }
 
 /* ----- flora silvestre: athelas (Lothlórien) y galenas (La Comarca) ----- */
@@ -1079,7 +1099,7 @@ function genFlora(data, cx, cz) {
       }
       continue;
     }
-    if (ih <= WATER_Y + 1 || ih >= 27) continue;
+    if (ih <= WATER_Y + 1 || ih >= ROCK_H) continue;
     if (surf !== B.GRASS) continue;
     const r = hash2(wx, wz, SEED + 31);
     let plant = 0;
@@ -1109,7 +1129,7 @@ function genRuins(data, cx, cz) {
       if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
       if (Math.hypot(ax - SPAWN.x, az - SPAWN.z) < 30) continue;
       const gh = heightAt(ax, az);
-      if (gh <= WATER_Y + 1 || gh >= 27) continue;
+      if (gh <= WATER_Y + 1 || gh >= ROCK_H) continue;
       const W = B.MOSSYSTONE;
       for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
         const wx = ax + dx, wz = az + dz, lx = wx - baseX, lz = wz - baseZ;
@@ -1155,7 +1175,7 @@ function genArgonath(data, cx, cz) {
   const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx >= 0 && lx < CH && lz >= 0 && lz < CH && y >= 0 && y < WH) data[IDX(lx, y, lz)] = id; };
   for (const [bx, face] of [[ARG.x - ARG.gap, 1], [ARG.x + ARG.gap, -1]]) {
     if (baseX - 6 > bx || baseX + CH + 6 < bx) continue;
-    buildStatue(set, bx, ARG.z, 20, face);                                 // pedestal sobre la orilla (y≈20)
+    buildStatue(set, bx, ARG.z, 20 + YBASE, face);                         // pedestal sobre la orilla (elevado con el mundo)
   }
 }
 
@@ -1207,7 +1227,7 @@ function genTrees(data, cx, cz) {
 
     // PINOS en las laderas de las montañas
     if (biome === BIOME.MOUNTAIN) {
-      if (gh < WATER_Y + 3 || gh > 31) continue;
+      if (gh < WATER_Y + 3 || gh > ROCK_H + 4) continue;
       if (hash2(wx, wz, SEED + 9) >= 0.011) continue;
       const th = 7 + Math.floor(hash2(wx, wz, SEED + 10) * 4), base = gh + 3;
       for (let y = gh + 1; y <= gh + th; y++) put(wx, y, wz, B.LOG, true);
@@ -1221,7 +1241,7 @@ function genTrees(data, cx, cz) {
     }
 
     if (biome !== BIOME.SHIRE && biome !== BIOME.LOTHLORIEN) continue;
-    if (gh <= WATER_Y + 1 || gh >= 27) continue;
+    if (gh <= WATER_Y + 1 || gh >= ROCK_H) continue;
     const density = biome === BIOME.LOTHLORIEN ? 0.022 : 0.006;
     if (hash2(wx, wz, SEED + 9) >= density) continue;
     const r2 = hash2(wx, wz, SEED + 10);
@@ -1255,7 +1275,8 @@ function genTrees(data, cx, cz) {
 /* ----- estructuras: Barad-dûr y agujero hobbit ----- */
 function genStructures(data, cx, cz) {
   const baseX = cx * CH, baseZ = cz * CH;
-  const set = (lx, y, lz, id) => { if (y >= 0 && y < WH) data[IDX(lx, y, lz)] = id; };
+  // los monumentos usan y absoluta "baja"; se elevan en bloque con YBASE para acompañar a la superficie
+  const set = (lx, y, lz, id) => { const yy = y + YBASE; if (yy >= 0 && yy < WH) data[IDX(lx, yy, lz)] = id; };
 
   for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
     const wx = baseX + lx, wz = baseZ + lz;
@@ -1298,7 +1319,7 @@ function genStructures(data, cx, cz) {
 
     // --- Moria: túnel, Puertas de Durin y la sala de Khazad-dûm ---
     if (wx >= 136 && wx <= 196 && wz >= -60 && wz <= 0) {
-      if (wx >= 150 && wx <= 192 && wz >= -54 && wz <= -6 && heightAt(wx, wz) > 34) {
+      if (wx >= 150 && wx <= 192 && wz >= -54 && wz <= -6 && heightAt(wx, wz) > SNOW_H) {
         for (let y = 22; y <= 29; y++) set(lx, y, lz, B.AIR);          // la gran sala
         set(lx, 21, lz, B.STONE);
         if (((wx - 154) % 10 + 10) % 10 < 2 && ((wz + 50) % 10 + 10) % 10 < 2)
@@ -1441,7 +1462,7 @@ function genStructures(data, cx, cz) {
 /* ============================================================
    TEXTURAS (atlas procedural en canvas)
 ============================================================ */
-const T = 16, ACOLS = 8, AROWS = 8;
+const T = 16, ACOLS = 8, AROWS = 10;   // más filas para los bloques de roca profunda y diamante
 const atlasCanvas = document.createElement('canvas');
 atlasCanvas.width = ACOLS * T; atlasCanvas.height = AROWS * T;
 const actx = atlasCanvas.getContext('2d');
@@ -1803,6 +1824,27 @@ const TILE_PAINTERS = [
     actx.fillRect(ox + 3, oy + 6, 1, 4); actx.fillRect(ox + 12, oy + 8, 1, 4);
     actx.fillStyle = css(220, 230, 180); for (let y = 2; y < 14; y += 3) px(ox, oy, 8, y, 220, 230, 180);  // espinas
   },
+  /* 63 deepstone (roca profunda) */ (ox, oy, rng) => {
+    speckle(ox, oy, [78, 80, 92], 0.12, rng);
+    for (let i = 0; i < 7; i++) { const x = (rng() * 14) | 0, y = (rng() * 14) | 0;
+      actx.fillStyle = 'rgba(48,50,60,.6)'; actx.fillRect(ox + x, oy + y, 2, 2); }
+  },
+  /* 64 hardrock (roca abisal) */ (ox, oy, rng) => {
+    speckle(ox, oy, [52, 50, 60], 0.16, rng);
+    for (let i = 0; i < 6; i++) { actx.fillStyle = 'rgba(30,28,38,.7)'; actx.fillRect(ox + ((rng() * 13) | 0), oy + ((rng() * 13) | 0), 3, 2); }
+    for (let i = 0; i < 5; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 96, 92, 110);   // vetas claras
+  },
+  /* 65 diamond_ore */ (ox, oy, rng) => {
+    speckle(ox, oy, [78, 80, 92], 0.1, rng);
+    for (let i = 0; i < 5; i++) { const x = 2 + ((rng() * 11) | 0), y = 2 + ((rng() * 11) | 0);
+      actx.fillStyle = css(110, 230, 224); actx.fillRect(ox + x, oy + y, 2, 2);
+      actx.fillStyle = css(210, 250, 248); px(ox, oy, x, y, 210, 250, 248); }
+  },
+  /* 66 diamond_block */ (ox, oy, rng) => {
+    speckle(ox, oy, [120, 226, 220], 0.06, rng);
+    actx.fillStyle = 'rgba(255,255,255,.7)'; actx.fillRect(ox + 3, oy + 3, 4, 2); actx.fillRect(ox + 10, oy + 10, 3, 2);
+    actx.fillStyle = 'rgba(70,170,166,.6)'; actx.fillRect(ox + 2, oy + 11, 4, 2); actx.fillRect(ox + 11, oy + 3, 2, 3);
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1870,6 +1912,10 @@ const TILE_MAP = {
   [B.MUSH_BROWN]:  { all: 60 },
   [B.BERRYBUSH]:   { all: 61 },
   [B.CACTUS]:      { all: 62 },
+  [B.DEEPSTONE]:   { all: 63 },
+  [B.HARDROCK]:    { all: 64 },
+  [B.DIAMOND_ORE]: { all: 65 },
+  [B.DIAMOND_BLOCK]:{ all: 66 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -1914,7 +1960,7 @@ scene.add(dirLight); scene.add(dirLight.target);
 const hemi = new THREE.HemisphereLight(0xcfe5ff, 0x6b5b45, 0.8);
 scene.add(hemi);
 const eyeLight = new THREE.PointLight(0xff4400, 900, 150, 1.8);
-eyeLight.position.set(TOWER.x + 0.5, 51, TOWER.z + 0.5);
+eyeLight.position.set(TOWER.x + 0.5, 51 + YBASE, TOWER.z + 0.5);
 scene.add(eyeLight);
 
 function discSprite(inner, outer) {
@@ -2267,7 +2313,7 @@ function physics(dt) {
 }
 
 function respawn() {   // tecla R: vuelta voluntaria a salvo, sin penalización
-  player.x = SPAWN.x; player.z = SPAWN.z; player.y = 30;
+  player.x = SPAWN.x; player.z = SPAWN.z; player.y = heightAt(Math.floor(SPAWN.x), Math.floor(SPAWN.z)) + 3;
   player.vx = player.vy = player.vz = 0;
   peakY = player.y; wasAir = false;
 }
@@ -2290,6 +2336,7 @@ function raycast(maxDist, opts = {}) {
   while (t <= maxDist) {
     const id = worldGetBlock(x, y, z);
     if (id !== -1 && (isSolid(id) || id === B.DOORXO || id === B.DOORZO ||
+        isLadder(id) || id === B.TORCH ||                 // se pueden apuntar (y romper) escaleras y antorchas
         (opts.plants !== false && isPlant(id)) ||
         (opts.fire !== false && id === B.FIRE) ||
         (opts.fluids && isFluid(id)))) return { x, y, z, id, face };
@@ -2319,7 +2366,10 @@ function hitsFor(id, tool) {
   if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW || id === B.FARMLAND) { base = 2; match = 'shovel'; }
   else if (id === B.LOG || id === B.MLOG || id === B.BIRCHLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || id === B.BED || isDoorId(id)) { base = 4; match = 'axe'; }
   else if (id === B.OBSIDIAN) { base = 14; match = 'pick'; }   // muy resistente
-  else if (id === B.MITHRIL) { base = 9; match = 'pick'; }
+  else if (id === B.HARDROCK) { base = 16; match = 'pick'; }   // roca abisal
+  else if (id === B.DEEPSTONE) { base = 9; match = 'pick'; }   // roca profunda
+  else if (id === B.MITHRIL || id === B.DIAMOND_ORE) { base = 9; match = 'pick'; }
+  else if (id === B.DIAMOND_BLOCK) { base = 10; match = 'pick'; }
   else { base = 6; match = 'pick'; }   // piedra y similares
   return tool === match ? Math.max(1, Math.round(base / 3)) : base;
 }
@@ -2452,6 +2502,15 @@ function swing(now) {
   if (!hit) { digState = null; hideDigbar(); return; }
   if (hit.id === B.FIRE) { playerSetBlock(hit.x, hit.y, hit.z, B.AIR); digState = null; return; }  // apagar fuego
   if (hit.id === B.BEDROCK) { digState = null; hideDigbar(); return; }
+  // la roca profunda solo cede ante un pico de metal del nivel adecuado
+  const req = PICK_REQ[hit.id];
+  if (req) {
+    const have = currentTool() === 'pick' ? (toolTier.pick || 'base') : 'none';
+    if (TIER_ORD[have] < TIER_ORD[req]) {
+      toast('Roca demasiado dura — necesitas un pico de ' + NAME_TIER[req] + ' o mejor');
+      digState = null; hideDigbar(); return;
+    }
+  }
   const key = hit.x + ',' + hit.y + ',' + hit.z;
   if (!digState || digState.key !== key) {
     const tool = currentTool();
@@ -2735,7 +2794,7 @@ function die(cause) {
       : cause === 'fall' ? 'Una mala caída… despiertas en La Comarca'
       : 'Has caído… despiertas a salvo en La Comarca');
   health = HMAX; fireTimer = poisonTimer = submerged = 0;
-  player.x = SPAWN.x; player.z = SPAWN.z; player.y = 30; player.vx = player.vy = player.vz = 0;
+  player.x = SPAWN.x; player.z = SPAWN.z; player.y = heightAt(Math.floor(SPAWN.x), Math.floor(SPAWN.z)) + 3; player.vx = player.vy = player.vz = 0;
   renderHealth();
 }
 function poison(seconds) { poisonTimer = Math.max(poisonTimer, seconds); }
@@ -3262,7 +3321,7 @@ function trySpawnAnimal(now) {
   if (gy < 0) return;
   const biome = biomeAt(sx, sz);
   let type = null;
-  if (biome === BIOME.MOUNTAIN || gy - 1 >= 27) type = Math.random() < 0.4 ? 'sheep' : 'goat';
+  if (biome === BIOME.MOUNTAIN || gy - 1 >= ROCK_H) type = Math.random() < 0.4 ? 'sheep' : 'goat';
   else if (biome === BIOME.SHIRE) { const r2 = Math.random(); type = r2 < 0.35 ? 'sheep' : r2 < 0.67 ? 'horse' : 'pony'; }
   else return;
   spawnMob(type, sx + 0.5, gy, sz + 0.5);
@@ -3490,6 +3549,7 @@ function saveWorld() {
   const cropList = [];
   for (const [k, c] of crops) cropList.push([k, c.type, Math.round(nowMs() - c.t)]);
   lsSet('tm_world_' + currentWorld.id, {
+    ver: 2,
     dayT, health,
     player: { x: player.x, y: player.y, z: player.z, yaw, pitch },
     edits,
@@ -3520,6 +3580,14 @@ function startWorld(meta, data, mode) {
   resetWorld();
   SEED = meta.seed | 0;
   dayT = data?.dayT ?? 0.22;
+  // migración: los mundos guardados antes de profundizar el subsuelo se elevan +YBASE para no quedar enterrados
+  if (data && !data.ver) {
+    if (data.player) data.player.y = (data.player.y || 26) + YBASE;
+    if (data.edits) for (const list of Object.values(data.edits)) for (const e of list) e[1] += YBASE;          // [lx, ly, lz, id]
+    if (data.chests) { const nc = {}; for (const [k, c] of Object.entries(data.chests)) { const p = k.split(',').map(Number); nc[p[0] + ',' + (p[1] + YBASE) + ',' + p[2]] = c; } data.chests = nc; }
+    if (Array.isArray(data.crops)) for (const cr of data.crops) { const p = cr[0].split(',').map(Number); cr[0] = p[0] + ',' + (p[1] + YBASE) + ',' + p[2]; }
+    data.ver = 2;
+  }
   if (data?.edits) {
     for (const [ck, list] of Object.entries(data.edits)) {
       const m = new Map();
@@ -3534,7 +3602,7 @@ function startWorld(meta, data, mode) {
   // inventario, cinturón y cofres
   chests.clear();
   if (data?.chests) for (const [k, c] of Object.entries(data.chests)) chests.set(k, c);
-  if (!data) chests.set('22,22,10', { [B.MITHRIL]: 3 });   // el regalo del agujero hobbit
+  if (!data) chests.set('22,' + (22 + YBASE) + ',10', { [B.MITHRIL]: 3 });   // el regalo del agujero hobbit
   const stash = isGuest ? lsGet('tm_ginv_' + SEED, null) : data;
   inv = Object.assign({}, stash?.inv ?? { [B.PLANK]: 16, [I.PIPE_SEED]: 3, [I.BARLEY_SEED]: 3 });
   hotbarMats = Array.isArray(stash?.hotbarMats) && stash.hotbarMats.length === NMAT
@@ -3581,7 +3649,7 @@ function startWorld(meta, data, mode) {
 
   const p = data?.player;
   player.x = p?.x ?? SPAWN.x + (isGuest ? 2.5 : 0);
-  player.y = p?.y ?? 26;
+  player.y = p?.y ?? (heightAt(Math.floor(SPAWN.x), Math.floor(SPAWN.z)) + 3);
   player.z = p?.z ?? SPAWN.z;
   player.vx = player.vy = player.vz = 0;
   yaw = p?.yaw ?? -2.36; pitch = p?.pitch ?? -0.05;
@@ -3792,6 +3860,10 @@ function drawItemIcon(g, id) {
     g.fillStyle = '#b8284a'; for (const [x, y] of [[11, 14], [19, 13], [15, 20], [22, 20]]) { g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
     g.fillStyle = 'rgba(255,180,190,.7)'; for (const [x, y] of [[10, 13], [18, 12], [14, 19], [21, 19]]) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
     g.fillStyle = '#3f8a44'; g.fillRect(15, 7, 2, 4);
+  } else if (id === I.DIAMOND) {
+    g.fillStyle = '#6ee6de'; g.beginPath(); g.moveTo(16, 5); g.lineTo(26, 14); g.lineTo(16, 27); g.lineTo(6, 14); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.moveTo(16, 5); g.lineTo(20, 14); g.lineTo(16, 14); g.closePath(); g.fill();
+    g.strokeStyle = '#2f9a92'; g.lineWidth = 1; g.beginPath(); g.moveTo(6, 14); g.lineTo(26, 14); g.stroke();
   } else if (id === I.BARLEY_GRAIN) {
     g.fillStyle = '#d8b85e'; for (let i = 0; i < 5; i++) g.fillRect(8 + (i % 3) * 5, 9 + ((i / 3) | 0) * 7, 4, 6);
   } else if (id === I.PIPE_SEED || id === I.BARLEY_SEED) {
@@ -4047,6 +4119,10 @@ function renderInv() {
       go: () => { removeInv(B.COBBLE, 3); addInv(B.LADDERS, 4); toast('Has fabricado escaleras de piedra'); } },
     { label: '5 tablones → 1 bote', can: inv[B.PLANK] >= 5,
       go: () => { removeInv(B.PLANK, 5); addInv(I.BOAT, 1); toast('Has construido un bote  (selecciónalo en el cinturón y clic derecho sobre el agua para botarlo)'); } },
+    { label: '9 diamantes → 1 bloque de diamante', can: inv[I.DIAMOND] >= 9,
+      go: () => { removeInv(I.DIAMOND, 9); addInv(B.DIAMOND_BLOCK, 1); toast('+1 Bloque de diamante'); } },
+    { label: '1 bloque de diamante → 9 diamantes', can: inv[B.DIAMOND_BLOCK] >= 1,
+      go: () => { removeInv(B.DIAMOND_BLOCK, 1); addInv(I.DIAMOND, 9); toast('+9 Diamantes'); } },
   ];
   for (const r of recipes) {
     const row = document.createElement('div');
@@ -4088,6 +4164,7 @@ const HELP_KB = [
   { k:['bote','barca','barco','navegar','remar','rio','anduin','cruzar','agua','boat'], a:'Fabrica un <b>bote</b> con 5 tablones (menú E). Selecciónalo en el cinturón y haz <b>clic derecho apuntando al agua</b> para botarlo; acércate y pulsa <b>E</b> para subir. Rema con WASD (vas más rápido que nadando). Pulsa <b>E</b> o <b>F</b> para desembarcar.' },
   { k:['arbol','arboles','madera','pino','abedul','manzano','palmera','tronco','hojas','tree'], a:'Hay varios <b>árboles</b>: roble y abedul en la Comarca, mallorn dorado en Lothlórien, <b>pinos</b> en las montañas y <b>palmeras</b> en las playas de arena. Pica el <b>tronco</b> con el hacha para sacar madera y haz tablones en el menú E.' },
   { k:['manzana','fruta','comida','comer','hambre','baya','bayas','seta','setas','flor','flores','cactus'], a:'Rompe las <b>hojas de manzano</b> para conseguir <b>manzanas</b>, y los <b>arbustos de bayas</b> para <b>bayas</b>: cómelas desde el inventario (E) para recuperar vida. También hay <b>flores</b>, <b>setas</b> y <b>cactus</b> que puedes recoger y replantar para decorar.' },
+  { k:['diamante','diamantes','cavar','minar','mina','profundo','profundidad','roca','subsuelo','excavar'], a:'Cava hacia abajo: la roca <b>endurece con la profundidad</b> (piedra → roca profunda → roca abisal). Un <b>pico de piedra</b> NO rompe la roca profunda: necesitas uno de <b>hierro</b>, y de <b>acero</b> para la más honda. Los <b>diamantes</b> aparecen muy abajo (cava por debajo de unos 80 niveles); con ellos forjas las <b>mejores herramientas</b> y un bloque de diamante.' },
   { k:['puerta','door'], a:'Fabrica una <b>puerta</b> con 4 tablones. Clic derecho para abrirla y cerrarla.' },
   { k:['nazgul','jefe','espectro','morgul'], a:'El <b>Nazgûl</b> es un jefe rarísimo de la noche profunda; te paraliza de miedo. Derrótalo con la mejor espada y buena armadura para conseguir una <b>Hoja de Morgul</b>.' },
   { k:['enemigo','enemigos','orco','orcos','uruk','noche','monstruo','hostil'], a:'De <b>noche</b> aparecen orcos, uruk-hai y arañas (de día solo en Mordor). Llévalos a punta de espada. Sueltan <b>hierro negro</b>, ideal para la armadura más recia.' },
@@ -4252,6 +4329,7 @@ function renderForge() {
     { label: 'Herramientas de hierro (5 hierro)',  need: [[I.IRON_INGOT, 5]],   out: () => setTools('iron') },
     { label: 'Herramientas de acero (6 acero)',    need: [[I.STEEL_INGOT, 6]],  out: () => setTools('steel') },
     { label: 'Herramientas de mithril (6 mithril)',need: [[I.MITHRIL_INGOT, 6]],out: () => setTools('mithril') },
+    { label: 'Herramientas de diamante (5 diamantes) — las mejores', need: [[I.DIAMOND, 5]], out: () => setTools('diamond') },
     { label: 'Armadura de hierro (6 hierro)',      need: [[I.IRON_INGOT, 6]],   out: () => setArmor('iron') },
     { label: 'Armadura de acero (6 acero)',        need: [[I.STEEL_INGOT, 6]],  out: () => setArmor('steel') },
     { label: 'Armadura de hierro negro (6) — recia',need: [[I.BIRON_INGOT, 6]], out: () => setArmor('blackiron') },
@@ -4297,10 +4375,10 @@ function ensureMapCache() {
       else {
         if (b === BIOME.MORDOR) c = [60, 48, 54];
         else if (b === BIOME.MARSH) c = [70, 84, 56];
-        else if (b === BIOME.MOUNTAIN || h >= 27) c = h >= 34 ? [226, 232, 238] : [134, 138, 143];
+        else if (b === BIOME.MOUNTAIN || h >= ROCK_H) c = h >= SNOW_H ? [226, 232, 238] : [134, 138, 143];
         else if (b === BIOME.LOTHLORIEN) c = [165, 142, 56];
         else c = [94, 152, 72];
-        const f = 0.8 + (h - 18) * 0.012;
+        const f = 0.8 + (h - 18 - YBASE) * 0.012;
         c = [c[0] * f, c[1] * f, c[2] * f];
       }
       mg.fillStyle = css(c[0], c[1], c[2]);
