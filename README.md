@@ -75,7 +75,11 @@ Construye un **bote** con **5 tablones** (menú E → 🔨 Fabricar). Es un obje
 
 ## 🐾 Fauna, clima y modo creativo
 
-- **Más animales**: por la Comarca y los bosques pastan **vacas, cerdos, gallinas, ciervos y zorros** (caza con clic izquierdo: sueltan **carne** que puedes comer para curarte). Hay **peces** nadando en lagos y ríos, **pájaros** volando, y **perros** que puedes **domar con grano de cebada** (clic derecho) para que **te sigan** a todas partes.
+- **Más animales**: por la Comarca y los bosques pastan **vacas, cerdos, gallinas, ciervos y zorros** (caza con clic izquierdo: sueltan **carne** que puedes comer para curarte). Hay **peces** nadando en lagos y ríos, **pájaros** volando, y **perros** que puedes **domar con grano de cebada** (clic derecho) para que **te sigan** a todas partes. Los enemigos y animales tienen ahora **modelos más detallados** (ojos, orejas, hocicos, colas…).
+- **Tu aspecto cambia con el equipo**: en 3ª persona (tecla **V**) verás tu **armadura** (peto, casco y hombreras) y la **espada** que lleves en la mano.
+- **Antorchas con luz**: las antorchas **iluminan de verdad** la zona y se colocan **pegadas a un bloque** (necesitan algo debajo que las sostenga).
+- **Charcos de lluvia**: cuando llueve se forman **charcos** en las hondonadas y agujeros (el agua respeta paredes y suelos; si cavas un agujero al lado de un charco, se desborda). Al escampar, los charcos se secan.
+- **Cofres para todo**: en los **cofres** ya puedes guardar **cualquier cosa** del inventario —espadas, comida, lingotes, diamantes, semillas, bloques— no solo materiales.
 - **Clima**: el tiempo cambia solo entre **despejado**, **lluvia** 🌧 (con gotas y cielo gris) y **niebla** 🌫 (que acorta la visión). En multijugador, el anfitrión marca el clima para los dos.
 - **Modo creativo** 🪶: ábrelo desde el menú **Esc → «Modo creativo»**. Te permite **volar** (ESPACIO sube, SHIFT baja), ser **invulnerable**, **romper cualquier bloque al instante** y **construir con bloques infinitos** (tienes todos los materiales). Vuelve a pulsarlo para desactivarlo. Se guarda por mundo.
 

@@ -1968,6 +1968,28 @@ const eyeLight = new THREE.PointLight(0xff4400, 900, 150, 1.8);
 eyeLight.position.set(TOWER.x + 0.5, 51 + YBASE, TOWER.z + 0.5);
 scene.add(eyeLight);
 
+// luces de antorcha: un grupo reducido que se reparte entre las antorchas más cercanas
+const torchLights = [];
+for (let i = 0; i < 8; i++) { const L = new THREE.PointLight(0xffa64d, 0, 10, 1.5); L.visible = false; scene.add(L); torchLights.push(L); }
+let nextTorchLight = 0;
+function updateTorchLights(now) {
+  if (now < nextTorchLight) return;
+  nextTorchLight = now + 180;
+  const near = [];
+  for (const key of torches) {
+    const c = key.split(',');
+    const x = +c[0], y = +c[1], z = +c[2];
+    const d = (x - player.x) ** 2 + (z - player.z) ** 2 + (y - player.y) ** 2;
+    if (d < 20 * 20) near.push({ x, y, z, d });
+  }
+  near.sort((a, b) => a.d - b.d);
+  for (let i = 0; i < torchLights.length; i++) {
+    const L = torchLights[i], t = near[i];
+    if (t) { L.position.set(t.x + 0.5, t.y + 0.55, t.z + 0.5); L.intensity = 22; L.visible = true; }
+    else { L.intensity = 0; L.visible = false; }
+  }
+}
+
 function discSprite(inner, outer) {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const g = c.getContext('2d');
@@ -2178,7 +2200,7 @@ function resetWorld() {
   if (boatMesh) { scene.remove(boatMesh); boatMesh = null; }
   for (const b of boats) scene.remove(b.mesh);
   boats = []; player.boat = false;
-  weather = 'clear'; nextWeatherChange = 0; if (rainPts) rainPts.visible = false;
+  weather = 'clear'; nextWeatherChange = 0; if (rainPts) rainPts.visible = false; puddles.clear();
   creative = false;
   sleeping = false; const sfx = $('fx-sleep'); if (sfx) sfx.style.opacity = 0;
   disposeSelfMesh();
@@ -2192,11 +2214,14 @@ const player = { x: SPAWN.x, y: 26, z: SPAWN.z, vx: 0, vy: 0, vz: 0, onGround: f
 let mountMesh = null;
 let camMode = 0, selfMesh = null;   // 0 = primera persona, 1 = tercera persona
 let creative = false;               // modo creativo: vuelo, invulnerable, romper al instante, bloques infinitos
-function buildSelfMesh() {
-  const col = new THREE.Color(profile.color || '#4caf50');
+const ARMOR_COL  = { iron:0xc8ccd2, steel:0x95a3c4, blackiron:0x33303a, mithril:0xbfe6ff };
+const WEAPON_COL = { iron:0xd8d8de, steel:0xc0ccea, silver:0xe8eef2, blackiron:0x4a4652, mithril:0xbfe6ff, morgul:0x7a3ac0 };
+// muñeco humanoide compartido (jugador local en 3ª persona y avatares remotos), con armadura y arma opcionales
+function humanoidMesh(color, armor, wt) {
+  const col = new THREE.Color(color || '#4caf50');
   const g = new THREE.Group();
   const bm = new THREE.MeshLambertMaterial({ color: col });
-  const hm = new THREE.MeshLambertMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), 0.35) });
+  const hm = new THREE.MeshLambertMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), 0.4) });
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.85, 0.3), bm); body.position.y = 0.85;
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), hm); head.position.y = 1.55;
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.16), bm); armL.position.set(0.4, 0.9, 0);
@@ -2204,9 +2229,25 @@ function buildSelfMesh() {
   const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.18), bm); legL.position.set(0.14, 0.35, 0);
   const legR = legL.clone(true); legR.position.x = -0.14;
   g.add(body, head, armL, armR, legL, legR);
+  const eyeM = new THREE.MeshBasicMaterial({ color: 0x20242a });        // ojos (hijos de la cabeza para que giren con ella)
+  for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.04), eyeM); e.position.set(sx * 0.12, 0.04, -0.26); head.add(e); }
+  if (armor && armor !== 'none' && ARMOR_COL[armor]) {                  // armadura: peto, casco y hombreras
+    const am = new THREE.MeshLambertMaterial({ color: ARMOR_COL[armor], emissive: armor === 'mithril' ? 0x16313a : 0x000000, emissiveIntensity: armor === 'mithril' ? 0.35 : 0 });
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.62, 0.38), am); chest.position.y = 0.95; g.add(chest);
+    const helm = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.3, 0.56), am); helm.position.y = 1.74; g.add(helm);
+    for (const sx of [-1, 1]) { const pad = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.24), am); pad.position.set(sx * 0.4, 1.18, 0); g.add(pad); }
+  }
+  if (wt && wt !== 'none') {                                            // espada empuñada en la mano derecha
+    const sw = new THREE.Group();
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.6, 0.07), new THREE.MeshLambertMaterial({ color: WEAPON_COL[wt] || 0xd8d8de })); blade.position.y = 0.32;
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.08), new THREE.MeshLambertMaterial({ color: 0x6a4a28 }));
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.06), new THREE.MeshLambertMaterial({ color: 0x4a3420 })); grip.position.y = -0.1;
+    sw.add(blade, guard, grip); sw.position.set(-0.42, 0.92, -0.2); sw.rotation.x = -0.6; g.add(sw);
+  }
   g.userData.head = head;
   return g;
 }
+function buildSelfMesh() { const m = humanoidMesh(profile.color, armorTier, currentWeaponTier()); m.userData.gearSig = armorTier + '|' + currentWeaponTier(); return m; }
 function disposeSelfMesh() {
   if (!selfMesh) return;
   selfMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
@@ -2658,6 +2699,7 @@ function tryPlace(initial) {
   if (cur === -1) return;
   if (cur !== B.AIR && !isFluid(cur) && cur !== B.FIRE && !isPlant(cur)) return;
   if (isSolid(mat) && intersectsPlayer(px, py, pz)) return;
+  if (mat === B.TORCH && !isSolid(worldGetBlock(px, py - 1, pz))) { if (initial) toast('La antorcha necesita un bloque debajo para sostenerla'); return; }   // nunca flotando
   if (!creative) removeInv(mat, 1);
   if (mat === B.CHEST) { chests.set(px + ',' + py + ',' + pz, {}); broadcastChest(px + ',' + py + ',' + pz, {}); }
   let placed = mat;
@@ -2691,17 +2733,11 @@ function nameSprite(name) {
 
 function addAvatar(id, name, color, x, y, z) {
   if (avatars.has(id)) removeAvatar(id);
-  const col = new THREE.Color(color || '#4caf50');
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: col });
-  const headMat = new THREE.MeshLambertMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), 0.35) });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.85, 0.3), bodyMat);
-  body.position.y = 0.85;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), headMat);
-  head.position.y = 1.55;
+  const group = humanoidMesh(color, 'none', 'none');
+  const head = group.userData.head;
   const sprite = nameSprite(name || '???');
   sprite.position.y = 2.15;
-  group.add(body, head, sprite);
+  group.add(sprite);
   group.position.set(x, y, z);
   scene.add(group);
   avatars.set(id, { group, head, sprite, t: { x, y, z }, yaw: 0, pitch: 0, name: name || '???' });
@@ -2710,10 +2746,10 @@ function addAvatar(id, name, color, x, y, z) {
 function removeAvatar(id) {
   const a = avatars.get(id);
   if (!a) return;
-  for (const m of a.group.children) {
+  a.group.traverse(m => {
     if (m.geometry) m.geometry.dispose();
     if (m.material) { if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
-  }
+  });
   scene.remove(a.group);
   avatars.delete(id);
 }
@@ -2962,6 +2998,14 @@ function createMobMesh(type) {
       const leg = new THREE.Mesh(legGeo, bm); leg.position.set(lx * sc, 0.31 * sc, lz * sc); g.add(leg); legs.push(leg);
     }
     limbs.legL = legs[0]; limbs.legR = legs[1]; limbs.legL2 = legs[2]; limbs.legR2 = legs[3];
+    const eyeM = new THREE.MeshBasicMaterial({ color: 0x16181c }); mats.push(eyeM);   // ojos
+    for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.06 * sc, 0.06 * sc, 0.04), eyeM); e.position.set(s * 0.09 * sc, 1.38 * sc, -1.0 * sc); g.add(e); }
+    const earGeo = new THREE.BoxGeometry(0.07 * sc, 0.12 * sc, 0.05 * sc);             // orejas
+    for (const s of [-1, 1]) { const ear = new THREE.Mesh(earGeo, hm); ear.position.set(s * 0.1 * sc, 1.5 * sc, -0.7 * sc); g.add(ear); }
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.18 * sc, 0.16 * sc, 0.12 * sc), hm);   // hocico
+    snout.position.set(0, 1.28 * sc, -1.0 * sc); g.add(snout);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08 * sc, 0.08 * sc, 0.4 * sc), bm);     // cola
+    tail.position.set(0, 1.0 * sc, 0.66 * sc); tail.rotation.x = -0.5; g.add(tail);
     if (def.horns) { const hornGeo = new THREE.BoxGeometry(0.07 * sc, 0.28 * sc, 0.07 * sc);
       const hm2 = new THREE.MeshLambertMaterial({ color: 0x4a3a28 }); mats.push(hm2);
       for (const s of [-1, 1]) { const horn = new THREE.Mesh(hornGeo, hm2); horn.position.set(s * 0.08 * sc, 1.5 * sc, -0.78 * sc); horn.rotation.x = 0.5; g.add(horn); } }
@@ -3027,6 +3071,9 @@ function createMobMesh(type) {
     if (type === 'orc' || type === 'uruk') {
       const wm = new THREE.MeshLambertMaterial({ color: 0x9a9aa0 });
       const wpn = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8 * sc, 0.08), wm); wpn.position.set(-0.42 * sc, 0.75 * sc, 0.2); g.add(wpn); mats.push(wm);
+      const eyeM = new THREE.MeshBasicMaterial({ color: 0xffd23a });   // ojos amarillos amenazantes
+      for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.09 * sc, 0.07 * sc, 0.04), eyeM); e.position.set(s * 0.12 * sc, 1.54 * sc, -0.25 * sc); g.add(e); mats.push(eyeM); }
+      if (type === 'uruk') { const wh = new THREE.Mesh(new THREE.BoxGeometry(0.5 * sc, 0.18 * sc, 0.04), new THREE.MeshBasicMaterial({ color: 0xe8e8ea })); wh.position.set(0, 1.6 * sc, -0.25 * sc); g.add(wh); }   // la Mano Blanca pintada
     }
   }
   return { group: g, mats, limbs };
@@ -3114,7 +3161,7 @@ function killMob(m, killerId) {
 }
 
 // el jugador local golpea con clic izquierdo a un mob que tenga en el punto de mira
-function mobInCrosshair() { return entityInCrosshair(3.6, m => !m.def.passive); }   // golpear solo a los hostiles
+function mobInCrosshair() { return entityInCrosshair(3.6, m => !(m.def.companion && m.tame)); }   // golpear a cualquier criatura (cazar animales), salvo tu perro domado
 function playerHitMob(m) {
   if (nowMs() - lastMelee < 380) return true;
   lastMelee = nowMs();
@@ -4446,8 +4493,8 @@ function renderChest() {
   const mine = $('chestinv');
   mine.innerHTML = '';
   let anyMine = false;
-  for (const id of MATERIALS) {
-    if (!(inv[id] > 0)) continue;
+  const myIds = Object.keys(inv).map(Number).filter(id => inv[id] > 0).sort((a, b) => a - b);   // TODO el inventario: bloques, semillas, armas, comida, objetos…
+  for (const id of myIds) {
     anyMine = true;
     mine.appendChild(makeIslot(id, inv[id], ev => {
       const put = ev.shiftKey ? 1 : inv[id];
@@ -4472,6 +4519,7 @@ function updateGearHUD() {
           + (wt !== 'none' ? '⚔' + NAME_TIER[wt] + ' ' : '')
           + (player.mount ? '🐴' + player.mount.def.name : '');
   $('gearinfo').textContent = g;
+  if (selfMesh && selfMesh.userData.gearSig !== armorTier + '|' + currentWeaponTier()) disposeSelfMesh();   // reconstruir el avatar al cambiar de equipo
 }
 function setTools(t)  { toolTier.pick = toolTier.shovel = toolTier.axe = t; saveDirty = true; toast('Forjas herramientas de ' + NAME_TIER[t]); updateGearHUD(); }
 function setArmor(t)  { armorTier = t; saveDirty = true; toast('Te ciñes una armadura de ' + NAME_TIER[t]); updateGearHUD(); }
@@ -4759,8 +4807,43 @@ let nextWeatherChange = 0;
 const COL_RAIN = new THREE.Color(0x5a6473), COL_FOG = new THREE.Color(0x9aa0a6);
 function setWeather(w) {
   if (w === weather) return;
+  const was = weather;
   weather = w;
+  if (was === 'rain' && w !== 'rain' && !isGuest) drainPuddles();   // al escampar, los charcos se secan
   toast(w === 'rain' ? '🌧 Empieza a llover' : w === 'fog' ? '🌫 Se levanta la niebla' : '☀ El cielo se despeja');
+}
+// charcos de lluvia: el anfitrión deja agua sobre suelo llano expuesto al cielo.
+// usa el sistema de fluidos normal, así que respeta paredes y suelos y puede colarse por un agujero.
+const puddles = new Set();
+let nextPuddle = 0;
+const PUDDLE_GROUND = new Set([B.GRASS, B.DIRT, B.SAND, B.SNOW, B.STONE, B.COBBLE, B.MUD, B.MOSSYSTONE]);
+function rainAccumulate(now) {
+  if (isGuest || weather !== 'rain' || godmode || creative) return;
+  if (now < nextPuddle) return;
+  nextPuddle = now + 1000;
+  if (puddles.size >= 16) return;                       // tope: charcos, no un diluvio sin fin
+  // muestrea varios sitios y elige la mejor HONDONADA (más paredes alrededor): el charco queda contenido,
+  // no inunda lo llano ni tus construcciones; si tú cavas un agujero al lado, el agua sí se cuela
+  let best = null, bestLips = 1;
+  for (let s = 0; s < 5; s++) {
+    const ang = Math.random() * 6.283, r = 4 + Math.random() * 16;
+    const x = Math.round(player.x + Math.cos(ang) * r), z = Math.round(player.z + Math.sin(ang) * r);
+    let sy = -1;
+    for (let y = WH - 1; y > 1; y--) { if (worldGetBlock(x, y, z) !== B.AIR) { sy = y; break; } }   // 1ª superficie = a cielo abierto
+    if (sy < 0 || !PUDDLE_GROUND.has(worldGetBlock(x, sy, z))) continue;
+    if (worldGetBlock(x, sy + 1, z) !== B.AIR) continue;        // bajo techo no llueve
+    const k = x + ',' + (sy + 1) + ',' + z;
+    if (puddles.has(k) || worldGetBlock(x, sy + 1, z) === B.WATER) continue;
+    let lips = 0; for (const [dx, dz] of HORIZ) if (isSolid(worldGetBlock(x + dx, sy + 1, z + dz))) lips++;
+    if (lips > bestLips) { bestLips = lips; best = { x, y: sy + 1, z, k }; }
+  }
+  if (!best) return;
+  fluidSet(best.x, best.y, best.z, B.WATER, 0);
+  puddles.add(best.k);
+}
+function drainPuddles() {
+  for (const key of puddles) { const c = key.split(','); if (worldGetBlock(+c[0], +c[1], +c[2]) === B.WATER) fluidSet(+c[0], +c[1], +c[2], B.AIR, 0); }
+  puddles.clear();
 }
 function maybeChangeWeather(now) {
   if (isGuest) return;
@@ -4853,9 +4936,10 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); maybeChangeWeather(now); }
+    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); maybeChangeWeather(now); rainAccumulate(now); }
     updateMobs(dt, now);
     updateRain(dt);
+    updateTorchLights(now);
     if (player.mount && mountMesh) { mountMesh.position.set(player.x, player.y, player.z); mountMesh.rotation.y = yaw; }
     if (player.boat && boatMesh) { boatMesh.position.set(player.x, player.y - 0.3, player.z); boatMesh.rotation.y = yaw; }
     updateDrops(dt, now);
@@ -4938,6 +5022,8 @@ window.G = {
   sleep: sleepInBed, sleeping: () => sleeping, interactAnimal,
   setDayRaw(t) { dayT = t; }, dayInfo: () => ({ dayT, sunY: sunY(), noche: isNight(), len: DAY_LEN }),
   weather: () => weather, setWeather, rainVisible: () => !!(rainPts && rainPts.visible),
+  rainAccumulate, drainPuddles, puddles: () => puddles.size, torches: () => torches.size, updateTorchLights,
+  torchLitCount: () => torchLights.filter(L => L.visible).length, buildSelfMesh, humanoidMesh,
   toggleCreative, creative: () => creative,
   helpMatch: (q) => { const tokens = normTxt(q).split(/[^a-z0-9]+/).filter(t => t.length >= 2); let best = null, bs = 0; for (const e of HELP_KB) { const s = helpScore(e, tokens); if (s > bs) { bs = s; best = e; } } return { kw: (best && bs >= 2) ? best.k[0] : null, score: bs }; },
   god: v => godmode = v, freeze: v => mobsFrozen = v,
