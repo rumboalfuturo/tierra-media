@@ -94,6 +94,7 @@ Construye un **bote** con **5 tablones** (menú E → 🔨 Fabricar). Es un obje
 ## ⛏ Minería profunda y diamantes
 
 - **El mundo es muy profundo**: hay unos **200 niveles bajo el suelo** hasta la roca madre.
+- **Cuevas subterráneas**: el subsuelo ya **no es roca maciza** — está atravesado por **túneles y cavernas** conectados que puedes explorar (cava ~6 bloques para empezar a encontrarlos; las grandes cavernas están más hondas). Las vetas de mineral y los diamantes asoman en las paredes de las cuevas.
 - **La roca endurece con la profundidad**: **piedra** arriba → **roca profunda** → **roca abisal** al fondo.
 - **Picos por niveles**: un **pico de piedra** NO rompe la roca profunda; necesitas uno de **hierro**, y de **acero** para la roca abisal. (Consigue hierro cerca de la superficie y fórjate mejores picos en la forja.)
 - **Minerales por profundidad**: hierro y plata arriba, oro a media altura, y muy abajo **mithril** y **diamantes**.
