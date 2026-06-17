@@ -228,6 +228,7 @@
   <div class="screen" id="scr-main">
     <h1>TIERRA MEDIA</h1>
     <div class="sub">Un mundo de bloques inspirado en El Señor de los Anillos</div>
+    <div class="sub" id="verline" style="opacity:.6; font-size:12px;">versión —</div>
     <div class="panel" style="max-width:420px;">
       <label class="flabel">Tu perfil</label>
       <input type="text" id="pname" maxlength="16" placeholder="Tu nombre">
@@ -388,7 +389,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 5;
+const GAME_VERSION = 6;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 256;             // altura del mundo (subsuelo muy profundo: ~200 niveles bajo la superficie)
@@ -3559,7 +3560,7 @@ function onHostData(conn, m) {
     conn.send({
       t: 'welcome', seed: SEED, dayT, gv: GAME_VERSION,
       name: worldDisplayName,
-      edits: flattenEdits(),
+      edits: [],                                   // las ediciones van por lotes aparte (un mundo grande no cabe en un mensaje)
       chests: Object.fromEntries([...chests].filter(([k]) => k[0] !== '@')),
       players: [
         { id: 'H', name: profile.name, color: profile.color, x: player.x, y: player.y, z: player.z },
@@ -3567,6 +3568,18 @@ function onHostData(conn, m) {
           .map(([id, g]) => ({ id, name: g.name, color: g.color, x: SPAWN.x, y: 24, z: SPAWN.z })),
       ],
     });
+    // enviar TODAS las modificaciones del mundo en lotes pequeños y espaciados
+    // (un mundo grande no cabe en un solo mensaje WebRTC y saturaría el buffer)
+    const allEdits = flattenEdits();
+    let ei = 0;
+    const sendBatch = () => {
+      if (!conn.open) return;
+      if (ei >= allEdits.length) { try { conn.send({ t: 'editdone', n: allEdits.length }); } catch {} return; }
+      try { conn.send({ t: 'editbatch', edits: allEdits.slice(ei, ei + 500) }); } catch {}
+      ei += 500;
+      setTimeout(sendBatch, 35);
+    };
+    sendBatch();
     broadcast({ t: 'pjoin', id: conn.peer, name: m.name, color: m.color, x: SPAWN.x, y: 24, z: SPAWN.z }, conn.peer);
     toast((m.name || 'Alguien') + ' se ha unido a la partida');
     updateNetInfo(); refreshPause();
@@ -3653,6 +3666,10 @@ function onGuestData(m, code) {
     for (const p of m.players) addAvatar(p.id, p.name, p.color, p.x, p.y, p.z);
     netTickStart();
     updateNetInfo();
+  } else if (m.t === 'editbatch') {
+    for (const e of m.edits) netApplySet(e[0], e[1], e[2], e[3]);   // construcciones del anfitrión, en lotes
+  } else if (m.t === 'editdone') {
+    if (m.n) toast('Mundo sincronizado (' + m.n + ' bloques del anfitrión)');
   } else if (m.t === 'set') {
     netApplySet(m.x, m.y, m.z, m.id);
   } else if (m.t === 'ppos') {
@@ -4873,6 +4890,7 @@ function updateRain(dt) {
   rainPts.position.set(player.x, player.y, player.z);
 }
 buildRain();
+{ const _vl = $('verline'); if (_vl) _vl.textContent = 'versión ' + GAME_VERSION + ' · para jugar juntos, los dos con la misma versión'; }
 
 function updateSky(dt, time) {
   dayT = (dayT + dt / DAY_LEN) % 1;
