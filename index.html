@@ -4973,38 +4973,81 @@ function setWeather(w) {
   if (was === 'rain' && w !== 'rain' && !isGuest) drainPuddles();   // al escampar, los charcos se secan
   toast(w === 'rain' ? '🌧 Empieza a llover' : w === 'fog' ? '🌫 Se levanta la niebla' : '☀ El cielo se despeja');
 }
-// charcos de lluvia: el anfitrión deja agua sobre suelo llano expuesto al cielo.
-// usa el sistema de fluidos normal, así que respeta paredes y suelos y puede colarse por un agujero.
-const puddles = new Set();
-let nextPuddle = 0;
-const PUDDLE_GROUND = new Set([B.GRASS, B.DIRT, B.SAND, B.SNOW, B.STONE, B.COBBLE, B.MUD, B.MOSSYSTONE]);
+// charcos de lluvia: pequeños, NO se extienden (no son fuentes), se evaporan con el tiempo.
+// el agua nunca atraviesa paredes/suelos y el anfitrión va secando lo que se anega.
+const puddles = new Map();                 // "x,y,z" -> instante de evaporación (ms)
+let nextPuddle = 0, nextDrain = 0;
+const PUDDLE_GROUND = new Set([B.GRASS, B.DIRT, B.SAND, B.SNOW, B.STONE, B.COBBLE, B.MUD, B.MOSSYSTONE, B.STONEBRICK, B.POLISHED]);
+const isOpenSky = (x, y, z) => { for (let yy = y + 1; yy < WH; yy++) { const b = worldGetBlock(x, yy, z); if (b !== B.AIR) return false; } return true; };
+function setPuddle(x, y, z, life) {        // bloque de agua "estático" (no se extiende; si lo tocan, se seca)
+  const k = x + ',' + y + ',' + z;
+  setBlockRaw(x, y, z, B.WATER);
+  fluidLvl.set(k, FLUID_MAX[B.WATER]);     // nivel máximo + sin alimentación → no genera charco; se seca si el simulador lo evalúa
+  if (isHost) broadcast({ t: 'set', x, y, z, id: B.WATER });
+  puddles.set(k, nowMs() + life);
+}
+function clearPuddle(k) {
+  const c = k.split(',').map(Number);
+  if (worldGetBlock(c[0], c[1], c[2]) === B.WATER) { setBlockRaw(c[0], c[1], c[2], B.AIR); if (isHost) broadcast({ t: 'set', x: c[0], y: c[1], z: c[2], id: B.AIR }); }
+  fluidLvl.delete(k); puddles.delete(k);
+}
+// secar una celda de forma persistente y SIN reprogramar fluido (para no rellenarla desde los vecinos)
+function dryCell(x, y, z) {
+  const k = x + ',' + y + ',' + z;
+  recordEdit(x, y, z, B.AIR);
+  setBlockRaw(x, y, z, B.AIR);
+  fluidLvl.delete(k);
+  saveDirty = true;
+  if (isHost) broadcast({ t: 'set', x, y, z, id: B.AIR });
+}
 function rainAccumulate(now) {
   if (isGuest || weather !== 'rain' || godmode || creative) return;
   if (now < nextPuddle) return;
-  nextPuddle = now + 1000;
-  if (puddles.size >= 16) return;                       // tope: charcos, no un diluvio sin fin
-  // muestrea varios sitios y elige la mejor HONDONADA (más paredes alrededor): el charco queda contenido,
-  // no inunda lo llano ni tus construcciones; si tú cavas un agujero al lado, el agua sí se cuela
-  let best = null, bestLips = 1;
-  for (let s = 0; s < 5; s++) {
-    const ang = Math.random() * 6.283, r = 4 + Math.random() * 16;
-    const x = Math.round(player.x + Math.cos(ang) * r), z = Math.round(player.z + Math.sin(ang) * r);
-    let sy = -1;
-    for (let y = WH - 1; y > 1; y--) { if (worldGetBlock(x, y, z) !== B.AIR) { sy = y; break; } }   // 1ª superficie = a cielo abierto
-    if (sy < 0 || !PUDDLE_GROUND.has(worldGetBlock(x, sy, z))) continue;
-    if (worldGetBlock(x, sy + 1, z) !== B.AIR) continue;        // bajo techo no llueve
-    const k = x + ',' + (sy + 1) + ',' + z;
-    if (puddles.has(k) || worldGetBlock(x, sy + 1, z) === B.WATER) continue;
-    let lips = 0; for (const [dx, dz] of HORIZ) if (isSolid(worldGetBlock(x + dx, sy + 1, z + dz))) lips++;
-    if (lips > bestLips) { bestLips = lips; best = { x, y: sy + 1, z, k }; }
+  nextPuddle = now + 1700;
+  if (puddles.size >= 18) return;                              // tope bajo: solo algún charco
+  const ang = Math.random() * 6.283, r = 5 + Math.random() * 16;
+  const x = Math.round(player.x + Math.cos(ang) * r), z = Math.round(player.z + Math.sin(ang) * r);
+  let sy = -1;
+  for (let y = WH - 1; y > 1; y--) { if (worldGetBlock(x, y, z) !== B.AIR) { sy = y; break; } }
+  if (sy <= WATER_Y || !PUDDLE_GROUND.has(worldGetBlock(x, sy, z))) return;   // sobre tierra firme y por encima del nivel del mar (nunca toca lagos/ríos)
+  if (worldGetBlock(x, sy + 1, z) !== B.AIR || !isOpenSky(x, sy + 1, z)) return;   // a cielo abierto (bajo techo no llueve)
+  const k = x + ',' + (sy + 1) + ',' + z;
+  if (puddles.has(k) || worldGetBlock(x, sy + 1, z) === B.WATER) return;
+  const life = 22000 + Math.random() * 16000;
+  setPuddle(x, sy + 1, z, life);                               // un bloque de charco
+  for (const [dx, dz] of HORIZ) {                              // a veces 1–2 contiguos del mismo nivel (charco pequeño)
+    if (Math.random() < 0.4 && worldGetBlock(x + dx, sy, z + dz) === worldGetBlock(x, sy, z)
+        && worldGetBlock(x + dx, sy + 1, z + dz) === B.AIR && isOpenSky(x + dx, sy + 1, z + dz))
+      setPuddle(x + dx, sy + 1, z + dz, life);
   }
-  if (!best) return;
-  fluidSet(best.x, best.y, best.z, B.WATER, 0);
-  puddles.add(best.k);
 }
-function drainPuddles() {
-  for (const key of puddles) { const c = key.split(','); if (worldGetBlock(+c[0], +c[1], +c[2]) === B.WATER) fluidSet(+c[0], +c[1], +c[2], B.AIR, 0); }
-  puddles.clear();
+function tickPuddles(now) {
+  if (isGuest) return;
+  const t = nowMs();
+  for (const [k, exp] of puddles) if (t > exp) clearPuddle(k);   // se evaporan con el tiempo
+}
+function drainPuddles() { for (const k of [...puddles.keys()]) clearPuddle(k); }   // secar todos (al escampar / cambiar de mundo)
+// seca poco a poco el agua poco profunda y a cielo abierto POR ENCIMA del nivel del mar:
+// vacía zonas anegadas y limpia las inundaciones que quedaron guardadas de antes (no toca lagos ni ríos)
+function drainFloods(now) {
+  if (isGuest || !inWorld || godmode) return;
+  if (now < nextDrain) return;
+  nextDrain = now + 1000;
+  const px = Math.floor(player.x), pz = Math.floor(player.z);
+  let removed = 0;
+  for (let tries = 0; tries < 80 && removed < 6; tries++) {
+    const x = px + ((Math.random() * 70) | 0) - 35, z = pz + ((Math.random() * 70) | 0) - 35;
+    let y = -1;
+    for (let yy = WH - 2; yy > WATER_Y; yy--) { if (worldGetBlock(x, yy, z) === B.WATER) { y = yy; break; } }   // agua elevada (lluvia/inundación)
+    if (y < 0) continue;
+    if (worldGetBlock(x, y + 1, z) !== B.AIR) continue;        // bajo techo no se evapora
+    // solo agua POCO PROFUNDA (suelo sólido a 1–2 bloques): no vacía estanques hondos hechos a propósito
+    if (!isSolid(worldGetBlock(x, y - 1, z)) && !isSolid(worldGetBlock(x, y - 2, z))) continue;
+    const k = x + ',' + y + ',' + z;
+    if (puddles.has(k)) continue;                              // los charcos gestionados ya caducan solos
+    dryCell(x, y, z);                                          // quitar persistente y sin reflujo (sobrescribe la inundación guardada)
+    removed++;
+  }
 }
 // los bosques se regeneran: de vez en cuando brota un árbol nuevo en hierba despejada cerca del jugador
 let nextRegrow = 0;
@@ -5118,7 +5161,7 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); maybeChangeWeather(now); rainAccumulate(now); regrowTrees(now); }
+    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); maybeChangeWeather(now); rainAccumulate(now); tickPuddles(now); drainFloods(now); regrowTrees(now); }
     updateMobs(dt, now);
     updateRain(dt);
     updateTorchLights(now);
@@ -5204,7 +5247,7 @@ window.G = {
   sleep: sleepInBed, sleeping: () => sleeping, interactAnimal,
   setDayRaw(t) { dayT = t; }, dayInfo: () => ({ dayT, sunY: sunY(), noche: isNight(), len: DAY_LEN }),
   weather: () => weather, setWeather, rainVisible: () => !!(rainPts && rainPts.visible),
-  rainAccumulate, drainPuddles, puddles: () => puddles.size, torches: () => torches.size, updateTorchLights,
+  rainAccumulate, drainPuddles, tickPuddles, drainFloods, setPuddle, puddles: () => puddles.size, torches: () => torches.size, updateTorchLights,
   regrowTrees, growTree, openFurnace, renderFurnace, toggleDoor,
   torchLitCount: () => torchLights.filter(L => L.visible).length, buildSelfMesh, humanoidMesh,
   toggleCreative, creative: () => creative,
