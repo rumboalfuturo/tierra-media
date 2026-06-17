@@ -4293,7 +4293,7 @@ const HELP_KB = [
   { k:['armadura','armaduras','armor','proteger','protege','proteccion'], a:'Para hacer <b>armadura</b>: pica <b>mineral de hierro</b> bajo tierra, fabrica una <b>forja</b> (8 piedra labrada, menú E), colócala y ábrela con clic derecho. Funde el mineral en lingotes y forja la armadura. La de <b>mithril</b> es la mejor: inmune al fuego y la lava.' },
   { k:['forja','forjar','fundir','horno','smelt','lingote','lingotes'], a:'La <b>forja</b> se fabrica con <b>8 piedra labrada</b> (sale de picar piedra) en el menú E. Colócala y clic derecho: a la izquierda fundes mineral en lingotes, a la derecha forjas herramientas, armas y armaduras.' },
   { k:['espada','arma','armas','weapon','sword','luchar','combatir','pelear'], a:'Fórjate una <b>espada</b> en la forja: funde hierro en lingotes y forja un arma. La <b>espada de Gondor</b> (acero) y la de <b>mithril</b> son las mejores. Ataca con clic izquierdo apuntando al enemigo.' },
-  { k:['mithril'], a:'El <b>mithril</b> es el mineral más raro, en las capas más <b>profundas</b> (cava por debajo de y24). Con él forjas la mejor armadura (inmune a la lava) y herramientas rapidísimas.' },
+  { k:['mithril'], a:'El <b>mithril</b> es el mineral más raro, en lo más <b>hondo</b> del subsuelo (cerca de la roca madre; necesitas un <b>pico de acero</b> para llegar). Con él forjas la mejor armadura (inmune a la lava) y herramientas rapidísimas.' },
   { k:['hierro','iron'], a:'El <b>hierro</b> está bajo tierra; pícalo con el pico. Fúndelo en la <b>forja</b> para hacer lingotes, la base de tus herramientas y armaduras.' },
   { k:['oro','gold','pepita','pepitas','manzana'], a:'El <b>oro</b> está bajo tierra. Fúndelo en lingotes y luego en <b>pepitas</b>; con 8 pepitas haces una <b>manzana de oro</b> para domar caballos al instante o curarte mucho.' },
   { k:['veneno','envenena','intoxic'], a:'El <b>veneno</b> (de las arañas) se cura con <b>hojas de athelas</b>: búscalas en Lothlórien o cultívalas, y úsalas desde el inventario (E).' },
@@ -4306,7 +4306,7 @@ const HELP_KB = [
   { k:['pipa','pipe','fumar'], a:'Fabrica una <b>pipa</b> con 4 tablones. Fúmala (con hierba para pipa) desde el inventario para recuperarte más rápido.' },
   { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
   { k:['cofre','chest','almacen','guardar'], a:'Fabrica un <b>cofre</b> con 8 tablones. Colócalo y clic derecho para guardar materiales. ¡Cuidado, la madera arde!' },
-  { k:['bote','barca','barco','navegar','remar','rio','anduin','cruzar','agua','boat'], a:'Fabrica un <b>bote</b> con 5 tablones (menú E). Selecciónalo en el cinturón y haz <b>clic derecho apuntando al agua</b> para botarlo; acércate y pulsa <b>E</b> para subir. Rema con WASD (vas más rápido que nadando). Pulsa <b>E</b> o <b>F</b> para desembarcar.' },
+  { k:['bote','barca','barco','navegar','navego','remar','rio','anduin','cruzar','boat'], a:'Fabrica un <b>bote</b> con 5 tablones (menú E). Selecciónalo en el cinturón y haz <b>clic derecho apuntando al agua</b> para botarlo; acércate y pulsa <b>E</b> para subir. Rema con WASD (vas más rápido que nadando). Pulsa <b>E</b> o <b>F</b> para desembarcar.' },
   { k:['arbol','arboles','madera','pino','abedul','manzano','palmera','tronco','hojas','tree'], a:'Hay varios <b>árboles</b>: roble y abedul en la Comarca, mallorn dorado en Lothlórien, <b>pinos</b> en las montañas y <b>palmeras</b> en las playas de arena. Pica el <b>tronco</b> con el hacha para sacar madera y haz tablones en el menú E.' },
   { k:['manzana','fruta','comida','comer','hambre','baya','bayas','seta','setas','flor','flores','cactus'], a:'Rompe las <b>hojas de manzano</b> para conseguir <b>manzanas</b>, y los <b>arbustos de bayas</b> para <b>bayas</b>: cómelas desde el inventario (E) para recuperar vida. También hay <b>flores</b>, <b>setas</b> y <b>cactus</b> que puedes recoger y replantar para decorar.' },
   { k:['diamante','diamantes','cavar','minar','mina','profundo','profundidad','roca','subsuelo','excavar'], a:'Cava hacia abajo: la roca <b>endurece con la profundidad</b> (piedra → roca profunda → roca abisal). Un <b>pico de piedra</b> NO rompe la roca profunda: necesitas uno de <b>hierro</b>, y de <b>acero</b> para la más honda. Los <b>diamantes</b> aparecen muy abajo (cava por debajo de unos 80 niveles); con ellos forjas las <b>mejores herramientas</b> y un bloque de diamante.' },
@@ -4317,27 +4317,58 @@ const HELP_KB = [
   { k:['mordor','barad','sauron'], a:'<b>Mordor</b> está al sureste, con lava, basalto y <b>Barad-dûr</b>. Siempre es hostil. Lleva armadura de <b>mithril</b> (inmune a la lava).' },
   { k:['argonath','estatua','estatuas','coloso','colosos'], a:'Los <b>Argonath</b> son dos colosos de piedra blanca junto al río Anduin (al este). Búscalos en el mapa (M).' },
   { k:['ruina','ruinas','tesoro','cripta','saquear'], a:'En las <b>ruinas</b> de piedra musgosa, pica el <b>suelo del centro</b> para abrir una cripta con <b>oro y mithril</b>.' },
-  { k:['mallorn','iluminar','antorcha'], a:'Consigue una <b>nuez de mallorn</b> (cosechando un brote) y plántala: crece un árbol dorado que <b>ilumina</b> la zona de noche.' },
+  { k:['mallorn','nuez','dorado'], a:'Consigue una <b>nuez de mallorn</b> (cosechando un brote) y plántala: crece un árbol dorado que <b>ilumina</b> la zona de noche.' },
+  { k:['antorcha','antorchas','iluminar','luz','oscuro','torch'], a:'Fabrica <b>antorchas</b> (1 tablón → 4, menú E). Colócalas para <b>iluminar de noche</b> y <b>ahuyentar enemigos</b> (no aparecen cerca de la luz).' },
+  { k:['dormir','cama','lecho','duermo','siesta','noche'], a:'Fabrica un <b>lecho de lana</b> (3 de lana, menú E). Colócalo y haz <b>clic derecho de noche</b> para dormir y pasar hasta el amanecer.' },
+  { k:['oveja','ovejas','lana','tijeras','esquilar','wool'], a:'Las <b>ovejas</b> dan <b>lana</b>: fórjate unas <b>tijeras</b> (2 lingotes de hierro, en la forja) y haz clic derecho sobre la oveja para esquilarla. La lana le vuelve a crecer.' },
+  { k:['escalera','escaleras','ladder','subir'], a:'Fabrica <b>escaleras</b> (3 tablones → 4, o 3 piedra labrada). Colócalas contra una pared y <b>sube con W o ESPACIO</b> (bajas con S). Se quitan apuntándolas y picando.' },
+  { k:['receta','recetas','libro','fabricar','craftear','craft'], a:'Pulsa <b>B</b> para el <b>libro de recetas</b>: lista todo lo que puedes fabricar (verde = tienes los materiales). Se construye en el menú <b>E</b> (🔨) o en la forja.' },
+  { k:['creativo','volar','vuelo','invulnerable','invencible','creative','infinitos'], a:'Activa el <b>modo creativo</b> en el menú <b>Esc</b>: <b>vuelas</b> (ESPACIO sube, SHIFT baja), eres invulnerable, rompes al instante y tienes <b>bloques infinitos</b>. Vuelve a pulsarlo para desactivarlo.' },
+  { k:['clima','lluvia','llueve','llover','lloviendo','niebla','tiempo','weather'], a:'El <b>clima</b> cambia solo entre despejado, <b>lluvia</b> y <b>niebla</b> (que reduce la visión). En multijugador lo marca el anfitrión para los dos.' },
+  { k:['obsidiana','obsidian'], a:'La <b>obsidiana</b> se forma cuando el <b>agua toca la lava</b>. Es muy dura: necesitas un buen pico de metal para picarla.' },
+  { k:['cubo','balde','bucket'], a:'El <b>cubo</b> (hueco 5) recoge <b>agua o lava</b> con clic izquierdo y la vierte con clic derecho.' },
+  { k:['control','controles','empezar','empiezo','tutorial','teclas','principio','inicio'], a:'<b>WASD</b> moverte · <b>ESPACIO</b> saltar · <b>clic izq</b> picar/atacar · <b>clic der</b> colocar/usar · <b>E</b> inventario · <b>B</b> recetas · <b>M</b> mapa · <b>V</b> cámara. Para empezar: pica <b>madera</b> (hacha) y <b>piedra</b> (pico), fabrica una <b>forja</b> y mejores herramientas.' },
   { k:['lava','fuego','quemar','quema','arde','incendio'], a:'La <b>lava</b> quema la hierba y la madera. El <b>agua</b> la enfría y la vuelve piedra. La armadura de <b>mithril</b> te hace inmune al fuego.' },
   { k:['construir','colocar','build','edificar'], a:'Elige un material en los huecos <b>6–9</b> del cinturón (asígnalo en el menú E) y colócalo con <b>clic derecho</b>.' },
   { k:['picar','romper','minar','mine','pico','pala','hacha','herramienta','herramientas'], a:'Pulsa <b>clic izquierdo</b> para picar (cada clic, un golpe). Usa el <b>pico</b> para piedra, la <b>pala</b> para tierra, el <b>hacha</b> para madera. Fórjate herramientas de metal para ir más rápido.' },
   { k:['cienaga','cienagas','pantano','lodo'], a:'Las <b>Ciénagas de los Muertos</b> tienen lodo que te frena, niebla y fuegos de almas. Crúzalas con cuidado, mejor a caballo.' },
   { k:['multijugador','amigo','hermano','sala','online','jugar juntos'], a:'Para jugar juntos: uno pulsa «Crear partida online» y comparte el <b>código de 5 letras</b>; el otro pulsa «Unirse con código».' },
 ];
-const HELP_CHIPS = ['¿Cómo mato una araña?', '¿Cómo hago una armadura?', '¿Cómo hago una forja?', '¿Cómo consigo mithril?', '¿Cómo domo un caballo?', '¿Cómo planto cultivos?', '¿Dónde está Mordor?'];
+const HELP_CHIPS = ['¿Cómo empiezo?', '¿Cómo mato una araña?', '¿Cómo hago una armadura?', '¿Cómo hago una forja?', '¿Cómo consigo diamantes?', '¿Cómo domo un caballo?', '¿Cómo planto cultivos?', '¿Cómo duermo?', '¿Qué es el modo creativo?', '¿Dónde está Mordor?'];
 function addHelpMsg(who, html) {
   const log = $('help-log');
   const d = document.createElement('div'); d.className = 'hmsg ' + who; d.innerHTML = html;
   log.appendChild(d); log.scrollTop = log.scrollHeight;
 }
+// busca por palabras (no por subcadenas: evita que "oro" case dentro de "tesoro"),
+// con tolerancia a plurales/variantes por prefijo común
+function helpScore(entry, tokens) {
+  let s = 0;
+  for (const kw of entry.k) {
+    const k = normTxt(kw);
+    const parts = k.split(' ');                       // claves de varias palabras: deben aparecer todas
+    let hit = false;
+    if (parts.length > 1) {
+      hit = parts.every(p => tokens.some(t => t === p || (p.length >= 4 && t.startsWith(p))));
+      if (hit) s += 4;
+    } else {
+      for (const t of tokens) {
+        if (t === k) { s += 3; hit = true; break; }
+        if (k.length >= 4 && t.length >= 4 && (t.startsWith(k) || k.startsWith(t))) { s += 2; hit = true; break; }
+      }
+    }
+  }
+  return s;
+}
 function askHelp(q) {
   q = (q || '').trim(); if (!q) return;
   addHelpMsg('you', q.replace(/[<>]/g, ''));
-  const nq = normTxt(q);
+  const tokens = normTxt(q).split(/[^a-z0-9]+/).filter(t => t.length >= 2);
   let best = null, bestScore = 0;
-  for (const e of HELP_KB) { let s = 0; for (const kw of e.k) if (nq.includes(normTxt(kw))) s += kw.length;
-    if (s > bestScore) { bestScore = s; best = e; } }
-  const ans = best ? best.a : 'No estoy seguro de eso, querido amigo. Prueba a preguntar por: <b>armadura, espada, arañas, forja, mithril, caballos, cultivos</b>… o toca una de las sugerencias de abajo.';
+  for (const e of HELP_KB) { const s = helpScore(e, tokens); if (s > bestScore) { bestScore = s; best = e; } }
+  const ans = (best && bestScore >= 2)
+    ? best.a
+    : 'No estoy seguro de eso, querido amigo. Pregúntame por <b>armadura</b>, <b>espada</b>, <b>arañas</b>, <b>forja</b>, <b>mithril</b>, <b>diamantes</b>, <b>caballos</b>, <b>cultivos</b>, <b>dormir</b>, <b>bote</b>, <b>modo creativo</b>… o toca una de las sugerencias de abajo.';
   setTimeout(() => addHelpMsg('g', ans), 160);
   $('help-input').value = '';
 }
@@ -4908,6 +4939,7 @@ window.G = {
   setDayRaw(t) { dayT = t; }, dayInfo: () => ({ dayT, sunY: sunY(), noche: isNight(), len: DAY_LEN }),
   weather: () => weather, setWeather, rainVisible: () => !!(rainPts && rainPts.visible),
   toggleCreative, creative: () => creative,
+  helpMatch: (q) => { const tokens = normTxt(q).split(/[^a-z0-9]+/).filter(t => t.length >= 2); let best = null, bs = 0; for (const e of HELP_KB) { const s = helpScore(e, tokens); if (s > bs) { bs = s; best = e; } } return { kw: (best && bs >= 2) ? best.k[0] : null, score: bs }; },
   god: v => godmode = v, freeze: v => mobsFrozen = v,
   findOre(id) { for (const ch of chunks.values()) for (let i = 0; i < ch.data.length; i++) if (ch.data[i] === id) { const lx = i % 16, lz = ((i / 16) | 0) % 16, ly = (i / 256) | 0; return { x: ch.cx * 16 + lx, y: ly, z: ch.cz * 16 + lz }; } return null; },
   net: () => ({ isHost, isGuest, roomCode, conns: conns.size, avatars: avatars.size, inWorld, world: worldDisplayName, seed: SEED }),
