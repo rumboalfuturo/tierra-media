@@ -83,6 +83,14 @@ Construye un **bote** con **5 tablones** (menú E → 🔨 Fabricar). Es un obje
 - **Clima**: el tiempo cambia solo entre **despejado**, **lluvia** 🌧 (con gotas y cielo gris) y **niebla** 🌫 (que acorta la visión). En multijugador, el anfitrión marca el clima para los dos.
 - **Modo creativo** 🪶: ábrelo desde el menú **Esc → «Modo creativo»**. Te permite **volar** (ESPACIO sube, SHIFT baja), ser **invulnerable**, **romper cualquier bloque al instante** y **construir con bloques infinitos** (tienes todos los materiales). Vuelve a pulsarlo para desactivarlo. Se guarda por mundo.
 
+## 🚪 Puertas, cantería y horno
+
+- **Puertas altas y dobles**: las puertas son de **2 bloques de alto**. Si pones **dos juntas**, forman una **puerta doble que se abre por el centro** (cada hoja gira hacia su lado).
+- **Cantería**: forja un **cincel** (3 hierro) y, en el menú E, convierte **piedra labrada → ladrillos de piedra → piedra pulida**.
+- **Horno**: fabrícalo con **8 piedra labrada** (menú E). Colócalo y clic derecho: convierte **arena → cristal**, piedra labrada → piedra lisa, y también funde mineral de hierro/oro.
+- **Cristal**: un bloque transparente para hacer ventanas.
+- **Plantar árboles**: al romper hojas a veces cae una **semilla de árbol**; plántala en hierba (clic derecho) y crecerá un árbol. Además, los **bosques se regeneran solos** con el tiempo.
+
 ## ⛏ Minería profunda y diamantes
 
 - **El mundo es muy profundo**: hay unos **200 niveles bajo el suelo** hasta la roca madre.

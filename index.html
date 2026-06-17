@@ -326,6 +326,15 @@
     </div>
   </div>
 
+  <div class="screen" id="scr-furnace">
+    <h2>🔥 HORNO</h2>
+    <div class="panel" style="max-width:480px;">
+      <label class="flabel">Cocer y fundir</label>
+      <div id="furnacebox" style="display:flex; flex-direction:column; gap:6px;"></div>
+      <button class="mbtn small" id="btn-furnace-close">▶ Volver al juego (E)</button>
+    </div>
+  </div>
+
   <div class="screen" id="scr-recipes">
     <h2>📖 LIBRO DE RECETAS</h2>
     <div class="panel" style="max-width:600px;">
@@ -389,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 6;
+const GAME_VERSION = 7;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 256;             // altura del mundo (subsuelo muy profundo: ~200 niveles bajo la superficie)
@@ -427,14 +436,19 @@ const B = {
   FLOWER_R:56, FLOWER_Y:57, MUSH_RED:58, MUSH_BROWN:59, BERRYBUSH:60, CACTUS:61,
   // subsuelo profundo (Fase: minería)
   DEEPSTONE:62, HARDROCK:63, DIAMOND_ORE:64, DIAMOND_BLOCK:65,
+  // cantería, cristal, horno y puertas anchas (centro)
+  STONEBRICK:66, POLISHED:67, GLASS:68, FURNACE:69,
+  DOORXO2:70, DOORZO2:71,   // segunda hoja de puerta: abre hacia el otro lado (puertas dobles al centro)
+  SAPLING:72,               // brote plantado que crece hasta ser árbol
 };
 const isLadder = id => id === B.LADDER || id === B.LADDERS;
-const isDoorId = id => id >= B.DOORX && id <= B.DOORZO;
+const isDoorId = id => (id >= B.DOORX && id <= B.DOORZO) || id === B.DOORXO2 || id === B.DOORZO2;
+const isOpenDoor = id => id === B.DOORXO || id === B.DOORZO || id === B.DOORXO2 || id === B.DOORZO2;
 // mineral → lingote al fundir en la forja (B.MITHRIL incluido)
 const SMELT = { [B.IRONORE]:'iron', [B.GOLDORE]:'gold', [B.SILVERORE]:'silver', [B.BIRONORE]:'biron', [B.MITHRIL]:'mithril' };
 // plantas finas (se atraviesan, se rompen de un golpe, se dibujan como aspas)
 const PLANTS = new Set([B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.ATHELAS, B.MSPROUT,
-                        B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.BERRYBUSH, B.CACTUS]);
+                        B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.BERRYBUSH, B.CACTUS, B.SAPLING]);
 const isPlant = id => PLANTS.has(id);
 
 // objetos del inventario que no son bloques (ids ≥ 200)
@@ -450,6 +464,7 @@ const I = {
   APPLE:227, BERRIES:228,   // frutas comestibles (Fase 4)
   DIAMOND:229,              // gema del subsuelo profundo
   MEAT:230,                 // carne de caza (comestible)
+  SAPLING:231, CHISEL:232,  // brote de árbol (se planta) y cincel (pule la piedra)
 };
 // objeto-arma → nivel de daño; la Hoja de Morgul también es un arma empuñable
 const WEAPON_ITEM = { [I.SW_IRON]:'iron', [I.SW_STEEL]:'steel', [I.SW_SILVER]:'silver', [I.SW_BIRON]:'blackiron', [I.SW_MITHRIL]:'mithril', [I.MORGUL_BLADE]:'morgul' };
@@ -460,6 +475,7 @@ const PLANTABLE = {
   [I.PIPE_SEED]:   { plant: B.PIPEWEEDY, on: 'farm' },
   [I.BARLEY_SEED]: { plant: B.BARLEYY,   on: 'farm' },
   [I.MALLORN_NUT]: { plant: B.MSPROUT,   on: 'soil' },
+  [I.SAPLING]:     { plant: B.SAPLING,   on: 'soil' },
 };
 const beltable = id => MATERIALS.includes(id) || PLANTABLE[id] !== undefined || isWeapon(id) || id === I.BOAT;
 const NAMES = {
@@ -485,7 +501,10 @@ const NAMES = {
   [B.MUSH_BROWN]:'Seta parda', [B.BERRYBUSH]:'Arbusto de bayas', [B.CACTUS]:'Cactus',
   [B.DEEPSTONE]:'Roca profunda', [B.HARDROCK]:'Roca abisal', [B.DIAMOND_ORE]:'Mineral de diamante',
   [B.DIAMOND_BLOCK]:'Bloque de diamante',
+  [B.STONEBRICK]:'Ladrillo de piedra', [B.POLISHED]:'Piedra pulida', [B.GLASS]:'Cristal', [B.FURNACE]:'Horno',
+  [B.DOORXO2]:'Puerta de madera', [B.DOORZO2]:'Puerta de madera', [B.SAPLING]:'Brote de árbol',
   [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque', [I.DIAMOND]:'Diamante', [I.MEAT]:'Carne asada',
+  [I.SAPLING]:'Semilla de árbol', [I.CHISEL]:'Cincel',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
   [I.PIPE_SEED]:'Semillas de galenas', [I.BARLEY_SEED]:'Semillas de cebada',
   [I.ATHELAS_LEAF]:'Hojas de athelas', [I.MALLORN_NUT]:'Nuez de mallorn dorada',
@@ -517,10 +536,12 @@ const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.
                    B.TORCH, B.LADDER, B.LADDERS, B.FORGE, B.CHEST, B.DOORX, B.BARREL, B.WATER, B.LAVA,
                    B.BIRCHLOG, B.PINELEAVES, B.BIRCHLEAVES, B.APPLELEAVES, B.PALMLEAVES,
                    B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.CACTUS,
-                   B.DEEPSTONE, B.HARDROCK, B.DIAMOND_BLOCK];
+                   B.DEEPSTONE, B.HARDROCK, B.DIAMOND_BLOCK,
+                   B.STONEBRICK, B.POLISHED, B.GLASS, B.FURNACE, B.STONE];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
-                [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX,
+                [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX, [B.DOORXO2]: B.DOORX, [B.DOORZO2]: B.DOORX,
+                [B.STONE]: B.COBBLE,
                 [B.FARMLAND]: B.DIRT, [B.MGLOW]: B.MLEAVES, [B.DIAMOND_ORE]: I.DIAMOND };
 // roca que solo cede ante un pico de cierto nivel de metal
 const PICK_REQ = { [B.DEEPSTONE]: 'iron', [B.HARDROCK]: 'steel', [B.DIAMOND_ORE]: 'iron' };
@@ -549,8 +570,8 @@ const BIOME = { SHIRE:0, LOTHLORIEN:1, MOUNTAIN:2, MORDOR:3, MARSH:4 };
 const BIOME_NAME = ['La Comarca', 'Lothlórien', 'Montañas Nubladas', 'Mordor', 'Ciénagas de los Muertos'];
 
 const isFluid  = id => id === B.WATER || id === B.LAVA;
-const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.SOULFIRE && id !== B.TORCH && id !== B.DOORXO && id !== B.DOORZO && !isLadder(id) && !isPlant(id);
-const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || id === B.SOULFIRE || id === B.TORCH || isDoorId(id) || isLadder(id) || isPlant(id);
+const isSolid  = id => id > 0 && !isFluid(id) && id !== B.FIRE && id !== B.SOULFIRE && id !== B.TORCH && !isOpenDoor(id) && !isLadder(id) && !isPlant(id);
+const isTransparent = id => id === B.AIR || id === B.WATER || id === B.FIRE || id === B.SOULFIRE || id === B.TORCH || id === B.GLASS || isDoorId(id) || isLadder(id) || isPlant(id);
 
 /* ============================================================
    RUIDO (value noise + fBm, determinista)
@@ -765,8 +786,8 @@ function updateQuests(now) {
   }
   el.innerHTML = questIdx < QUESTS.length ? '📜 <b>Misión:</b> ' + QUESTS[questIdx].text : '📜 <b>¡Todas completadas!</b>';
 }
-const GROW = { pipeweed: 75000, barley: 80000, mallorn: 100000 };
-const CROP_TYPE = { [B.PIPEWEEDY]: 'pipeweed', [B.BARLEYY]: 'barley', [B.MSPROUT]: 'mallorn' };
+const GROW = { pipeweed: 75000, barley: 80000, mallorn: 100000, sapling: 70000 };
+const CROP_TYPE = { [B.PIPEWEEDY]: 'pipeweed', [B.BARLEYY]: 'barley', [B.MSPROUT]: 'mallorn', [B.SAPLING]: 'sapling' };
 
 function registerCrop(wx, wy, wz, id) {
   if (isGuest) return;            // el anfitrión lleva el reloj de crecimiento
@@ -783,7 +804,21 @@ function growCrops(now) {
     if (c.type === 'pipeweed') playerSetBlock(x, y, z, B.PIPEWEEDM);
     else if (c.type === 'barley') playerSetBlock(x, y, z, B.BARLEYM);
     else if (c.type === 'mallorn') growMallorn(x, y, z);
+    else if (c.type === 'sapling') growTree(x, y, z);
   }
+}
+// crece un árbol (roble o abedul) desde el suelo en (x,y,z) — usado por brotes y por la regeneración
+function growTree(x, y, z, birch) {
+  if (birch === undefined) birch = hash2(x, z, SEED + 71) < 0.4;
+  playerSetBlock(x, y, z, B.AIR);
+  const base = y, th = 4 + ((hash2(x, z, SEED + 72) * 3) | 0);
+  const log = birch ? B.BIRCHLOG : B.LOG, leaf = birch ? B.BIRCHLEAVES : B.LEAVES;
+  for (let i = 0; i < th; i++) if (worldGetBlock(x, base + i, z) === B.AIR || worldGetBlock(x, base + i, z) === B.SAPLING) playerSetBlock(x, base + i, z, log);
+  for (let dy = th - 1; dy <= th; dy++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+    if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+    if (worldGetBlock(x + dx, base + dy, z + dz) === B.AIR) playerSetBlock(x + dx, base + dy, z + dz, leaf);
+  }
+  for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) if (worldGetBlock(x + dx, base + th + 1, z + dz) === B.AIR) playerSetBlock(x + dx, base + th + 1, z + dz, leaf);
 }
 // el brote de mallorn se convierte en un árbol blanco de hojas doradas que ilumina
 function growMallorn(x, y, z) {
@@ -1851,6 +1886,40 @@ const TILE_PAINTERS = [
     actx.fillStyle = 'rgba(255,255,255,.7)'; actx.fillRect(ox + 3, oy + 3, 4, 2); actx.fillRect(ox + 10, oy + 10, 3, 2);
     actx.fillStyle = 'rgba(70,170,166,.6)'; actx.fillRect(ox + 2, oy + 11, 4, 2); actx.fillRect(ox + 11, oy + 3, 2, 3);
   },
+  /* 67 stone_brick */ (ox, oy, rng) => {
+    speckle(ox, oy, [120, 122, 126], 0.06, rng);
+    actx.fillStyle = 'rgba(78,80,84,.8)';
+    for (let row = 0; row < 4; row++) { const off = (row % 2) * 4;
+      actx.fillRect(ox, oy + row * 4 + 3, T, 1);
+      for (let col = 0; col < 3; col++) actx.fillRect(ox + ((off + col * 8) % 16), oy + row * 4, 1, 4); }
+  },
+  /* 68 polished_stone */ (ox, oy, rng) => {
+    speckle(ox, oy, [150, 152, 156], 0.03, rng);
+    actx.fillStyle = 'rgba(255,255,255,.25)'; actx.fillRect(ox + 2, oy + 2, 5, 1);
+    actx.fillStyle = 'rgba(90,92,96,.3)'; actx.fillRect(ox + 8, oy + 12, 6, 1);
+  },
+  /* 69 glass */ (ox, oy, rng) => {            // casi transparente: solo el marco y un brillo (alphaTest lo recorta no, es sólido translúcido visual)
+    actx.fillStyle = 'rgba(200,225,235,.30)'; actx.fillRect(ox, oy, T, T);
+    actx.fillStyle = 'rgba(235,245,250,.7)'; actx.fillRect(ox, oy, T, 1); actx.fillRect(ox, oy, 1, T); actx.fillRect(ox, oy + T - 1, T, 1); actx.fillRect(ox + T - 1, oy, 1, T);
+    actx.fillStyle = 'rgba(255,255,255,.55)'; actx.beginPath(); actx.moveTo(ox + 3, oy + 11); actx.lineTo(ox + 11, oy + 3); actx.lineTo(ox + 13, oy + 5); actx.lineTo(ox + 5, oy + 13); actx.closePath(); actx.fill();
+  },
+  /* 70 furnace_side */ (ox, oy, rng) => {
+    for (let by = 0; by < 4; by++) for (let bx = 0; bx < 4; bx++) { const f = 0.8 + rng() * 0.4;
+      actx.fillStyle = css(86 * f, 88 * f, 92 * f); actx.fillRect(ox + bx * 4 + ((bx + by) % 2), oy + by * 4, 3, 3); }
+    actx.fillStyle = css(22, 16, 14); actx.fillRect(ox + 4, oy + 8, 8, 6);     // boca
+    actx.fillStyle = css(250, 150, 40); actx.fillRect(ox + 5, oy + 11, 6, 3);  // brasas
+    actx.fillStyle = css(255, 220, 130); actx.fillRect(ox + 6, oy + 12, 4, 1);
+  },
+  /* 71 furnace_top */ (ox, oy, rng) => {
+    speckle(ox, oy, [92, 94, 98], 0.1, rng);
+    actx.fillStyle = css(40, 36, 34); actx.fillRect(ox + 4, oy + 4, 8, 8);
+    actx.fillStyle = css(70, 66, 62); actx.fillRect(ox + 5, oy + 5, 6, 6);
+  },
+  /* 72 sapling (fondo transparente) */ (ox, oy, rng) => {
+    actx.fillStyle = css(110, 78, 44); actx.fillRect(ox + 7, oy + 9, 2, 6);     // tronquito
+    actx.fillStyle = css(74, 132, 56); actx.fillRect(ox + 4, oy + 4, 8, 5); actx.fillRect(ox + 6, oy + 2, 4, 3);   // copa
+    actx.fillStyle = css(96, 158, 70); px(ox, oy, 6, 5, 96, 158, 70); px(ox, oy, 9, 6, 96, 158, 70);
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -1922,6 +1991,13 @@ const TILE_MAP = {
   [B.HARDROCK]:    { all: 64 },
   [B.DIAMOND_ORE]: { all: 65 },
   [B.DIAMOND_BLOCK]:{ all: 66 },
+  [B.STONEBRICK]:  { all: 67 },
+  [B.POLISHED]:    { all: 68 },
+  [B.GLASS]:       { all: 69 },
+  [B.FURNACE]:     { top: 71, bottom: 71, side: 70 },
+  [B.DOORXO2]:     { all: 23 },
+  [B.DOORZO2]:     { all: 23 },
+  [B.SAPLING]:     { all: 72 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -2021,9 +2097,11 @@ const UV_E = 0.02;
 // las puertas son paneles finos, no cubos: [x0,x1, y0,y1, z0,z1]
 const DOOR_BOX = {
   [B.DOORX]:  [0.40, 0.60, 0, 1, 0, 1],     // cerrada: corta el paso en x
-  [B.DOORXO]: [0, 1, 0, 1, 0.00, 0.18],     // abierta: pegada al lado
+  [B.DOORXO]: [0, 1, 0, 1, 0.00, 0.18],     // abierta hacia z−
+  [B.DOORXO2]:[0, 1, 0, 1, 0.82, 1.00],     // abierta hacia z+ (hoja opuesta de la puerta doble)
   [B.DOORZ]:  [0, 1, 0, 1, 0.40, 0.60],     // cerrada: corta el paso en z
-  [B.DOORZO]: [0.00, 0.18, 0, 1, 0, 1],     // abierta: pegada al lado
+  [B.DOORZO]: [0.00, 0.18, 0, 1, 0, 1],     // abierta hacia x−
+  [B.DOORZO2]:[0.82, 1.00, 0, 1, 0, 1],     // abierta hacia x+ (hoja opuesta)
 };
 
 function faceVisible(self, nb) {
@@ -2098,7 +2176,7 @@ function buildChunkMesh(ch) {
       }
       continue;
     }
-    const bucket = id === B.WATER ? buckets.water : (id === B.LAVA || id === B.FIRE || id === B.MGLOW || id === B.SOULFIRE) ? buckets.glow : buckets.solid;
+    const bucket = (id === B.WATER || id === B.GLASS) ? buckets.water : (id === B.LAVA || id === B.FIRE || id === B.MGLOW || id === B.SOULFIRE) ? buckets.glow : buckets.solid;
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const nb = nbAt(lx + face.dir[0], ly + face.dir[1], lz + face.dir[2]);
@@ -2405,7 +2483,7 @@ function raycast(maxDist, opts = {}) {
   let face = [0, 0, 0], t = 0;
   while (t <= maxDist) {
     const id = worldGetBlock(x, y, z);
-    if (id !== -1 && (isSolid(id) || id === B.DOORXO || id === B.DOORZO ||
+    if (id !== -1 && (isSolid(id) || isOpenDoor(id) ||
         isLadder(id) || id === B.TORCH ||                 // se pueden apuntar (y romper) escaleras y antorchas
         (opts.plants !== false && isPlant(id)) ||
         (opts.fire !== false && id === B.FIRE) ||
@@ -2432,7 +2510,7 @@ const currentTool = () => sel < TOOLS.length ? TOOLS[sel].k : null;
 function hitsFor(id, tool) {
   let base, match;
   if (isPlant(id) || isLadder(id) || id === B.TORCH || id === B.LEAVES || id === B.MLEAVES || id === B.MGLOW || id === B.WOOL
-      || id === B.PINELEAVES || id === B.BIRCHLEAVES || id === B.APPLELEAVES || id === B.PALMLEAVES) return 1;
+      || id === B.PINELEAVES || id === B.BIRCHLEAVES || id === B.APPLELEAVES || id === B.PALMLEAVES || id === B.GLASS) return 1;
   if (id === B.DIRT || id === B.GRASS || id === B.SAND || id === B.SNOW || id === B.FARMLAND) { base = 2; match = 'shovel'; }
   else if (id === B.LOG || id === B.MLOG || id === B.BIRCHLOG || id === B.PLANK || id === B.CHEST || id === B.BARREL || id === B.BED || isDoorId(id)) { base = 4; match = 'axe'; }
   else if (id === B.OBSIDIAN) { base = 14; match = 'pick'; }   // muy resistente
@@ -2546,6 +2624,7 @@ function completeBreak(hit) {
   if (hit.id === B.GRASS && Math.random() < 0.35)            // semillas silvestres
     addInv(Math.random() < 0.5 ? I.PIPE_SEED : I.BARLEY_SEED, 1);
   if (hit.id === B.APPLELEAVES && Math.random() < 0.28) spawnDrop(cx, cy, cz, I.APPLE, 1);   // el manzano da fruta
+  if ((hit.id === B.LEAVES || hit.id === B.BIRCHLEAVES || hit.id === B.APPLELEAVES || hit.id === B.PINELEAVES) && Math.random() < 0.12) spawnDrop(cx, cy, cz, I.SAPLING, 1);   // brotes para replantar
   const drop = DROPS[hit.id] !== undefined ? DROPS[hit.id] : hit.id;
   if (drop) spawnDrop(cx, cy, cz, drop, 1);
   playerSetBlock(hit.x, hit.y, hit.z, B.AIR);
@@ -2599,8 +2678,7 @@ function swing(now) {
 
 // abre o cierra una puerta y todas las hojas conectadas (portones de varias piezas)
 function toggleDoor(x, y, z) {
-  const flip = id => id === B.DOORX ? B.DOORXO : id === B.DOORXO ? B.DOORX
-                   : id === B.DOORZ ? B.DOORZO : B.DOORZ;
+  const opening = !isOpenDoor(worldGetBlock(x, y, z));   // estado destino según la hoja pulsada
   const seen = new Set(), stack = [[x, y, z]];
   let n = 0;
   while (stack.length && n < 40) {
@@ -2611,7 +2689,17 @@ function toggleDoor(x, y, z) {
     const id = worldGetBlock(cx, cy, cz);
     if (!isDoorId(id)) continue;
     n++;
-    playerSetBlock(cx, cy, cz, flip(id));
+    const axisX = (id === B.DOORX || id === B.DOORXO || id === B.DOORXO2);   // hoja que corta el eje x (su pareja está en z)
+    let target;
+    if (!opening) target = axisX ? B.DOORX : B.DOORZ;
+    else if (axisX) {
+      const nzm = isDoorId(worldGetBlock(cx, cy, cz - 1)), nzp = isDoorId(worldGetBlock(cx, cy, cz + 1));
+      target = (nzm && !nzp) ? B.DOORXO2 : B.DOORXO;     // si su pareja está en z−, abre hacia z+ (puertas dobles → al centro)
+    } else {
+      const nxm = isDoorId(worldGetBlock(cx - 1, cy, cz)), nxp = isDoorId(worldGetBlock(cx + 1, cy, cz));
+      target = (nxm && !nxp) ? B.DOORZO2 : B.DOORZO;
+    }
+    playerSetBlock(cx, cy, cz, target);
     for (const d of DIRS6) stack.push([cx + d[0], cy + d[1], cz + d[2]]);
   }
 }
@@ -2661,6 +2749,7 @@ function tryPlace(initial) {
   if (isDoorId(hit.id)) { if (initial) toggleDoor(hit.x, hit.y, hit.z); return; }
   if (hit.id === B.CHEST) { if (initial) openChest(hit.x + ',' + hit.y + ',' + hit.z); return; }
   if (hit.id === B.FORGE) { if (initial) openForge(); return; }
+  if (hit.id === B.FURNACE) { if (initial) openFurnace(); return; }
   if (hit.id === B.BARREL) { if (initial) drinkBarrel(hit.x + ',' + hit.y + ',' + hit.z); return; }
   if (hit.id === B.BED) { if (initial) sleepInBed(); return; }
 
@@ -2701,12 +2790,16 @@ function tryPlace(initial) {
   if (cur !== B.AIR && !isFluid(cur) && cur !== B.FIRE && !isPlant(cur)) return;
   if (isSolid(mat) && intersectsPlayer(px, py, pz)) return;
   if (mat === B.TORCH && !isSolid(worldGetBlock(px, py - 1, pz))) { if (initial) toast('La antorcha necesita un bloque debajo para sostenerla'); return; }   // nunca flotando
+  if (mat === B.DOORX && (py + 1 >= WH || worldGetBlock(px, py + 1, pz) !== B.AIR)) { if (initial) toast('Hace falta hueco arriba: las puertas son de 2 de alto'); return; }
   if (!creative) removeInv(mat, 1);
   if (mat === B.CHEST) { chests.set(px + ',' + py + ',' + pz, {}); broadcastChest(px + ',' + py + ',' + pz, {}); }
   let placed = mat;
-  if (mat === B.DOORX) {                      // orientar la puerta según hacia dónde miras
+  if (mat === B.DOORX) {                      // puerta de 2 de alto, orientada según hacia dónde miras
     camera.getWorldDirection(_dir);
     placed = Math.abs(_dir.x) > Math.abs(_dir.z) ? B.DOORX : B.DOORZ;
+    playerSetBlock(px, py, pz, placed);
+    playerSetBlock(px, py + 1, pz, placed);
+    return;
   }
   playerSetBlock(px, py, pz, placed);
   if (placed === B.TORCH) { questFlags.torchPlaced = true; toast('Has colocado una antorcha'); }
@@ -3820,7 +3913,7 @@ function startWorld(meta, data, mode) {
     const swItem = Object.keys(WEAPON_ITEM).find(k => WEAPON_ITEM[k] === gear.weapon);
     if (swItem && !(inv[swItem] > 0)) inv[swItem] = 1;
   }
-  forgeOpen = false;
+  forgeOpen = false; furnaceOpen = false;
   updateGearHUD();
 
   // misiones (progreso por mundo)
@@ -3869,7 +3962,7 @@ let menuScreen = 'main', worldsMode = 'sp';
 function showScreen(s) {
   menuScreen = s;
   $('menu').style.display = s ? 'flex' : 'none';
-  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map', 'scr-forge', 'scr-help', 'scr-recipes'])
+  for (const id of ['scr-main', 'scr-worlds', 'scr-join', 'scr-pause', 'scr-inv', 'scr-chest', 'scr-map', 'scr-forge', 'scr-furnace', 'scr-help', 'scr-recipes'])
     $(id).style.display = (id === 'scr-' + s) ? 'flex' : 'none';
   if (s === 'pause') refreshPause();
   if (s === 'worlds') renderWorldList();
@@ -3877,6 +3970,7 @@ function showScreen(s) {
   if (s === 'chest') renderChest();
   if (s === 'map') renderMap();
   if (s === 'forge') renderForge();
+  if (s === 'furnace') renderFurnace();
   if (s === 'help') setTimeout(() => { const i = $('help-input'); if (i) i.focus(); }, 30);
   if (s === 'recipes') renderRecipeBook();
 }
@@ -4062,6 +4156,14 @@ function drawItemIcon(g, id) {
     g.fillStyle = '#b8284a'; for (const [x, y] of [[11, 14], [19, 13], [15, 20], [22, 20]]) { g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
     g.fillStyle = 'rgba(255,180,190,.7)'; for (const [x, y] of [[10, 13], [18, 12], [14, 19], [21, 19]]) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
     g.fillStyle = '#3f8a44'; g.fillRect(15, 7, 2, 4);
+  } else if (id === I.SAPLING) {
+    g.fillStyle = '#7a5230'; g.fillRect(15, 18, 2, 9);                                   // tronquito
+    g.fillStyle = '#4a9a40'; g.beginPath(); g.arc(16, 13, 7, 0, 7); g.fill();            // copa
+    g.fillStyle = '#3f8a36'; g.beginPath(); g.arc(13, 11, 3, 0, 7); g.arc(19, 12, 3, 0, 7); g.fill();
+  } else if (id === I.CHISEL) {
+    g.strokeStyle = '#caa85a'; g.lineWidth = 4; g.beginPath(); g.moveTo(8, 24); g.lineTo(17, 15); g.stroke();   // mango
+    g.fillStyle = '#c8ccd2'; g.beginPath(); g.moveTo(16, 14); g.lineTo(24, 6); g.lineTo(26, 8); g.lineTo(18, 16); g.closePath(); g.fill();   // hoja metálica
+    g.fillStyle = '#eef2f6'; g.fillRect(23, 6, 3, 3);
   } else if (id === I.MEAT) {
     g.fillStyle = '#9a4a30'; g.beginPath(); g.ellipse(16, 17, 9, 7, 0.3, 0, 7); g.fill();          // chuleta
     g.fillStyle = '#7a3420'; g.beginPath(); g.ellipse(16, 17, 9, 7, 0.3, 0, 7); g.stroke();
@@ -4329,6 +4431,12 @@ function renderInv() {
       go: () => { removeInv(B.PLANK, 5); addInv(I.BOAT, 1); toast('Has construido un bote  (selecciónalo en el cinturón y clic derecho sobre el agua para botarlo)'); } },
     { label: '9 diamantes → 1 bloque de diamante', can: inv[I.DIAMOND] >= 9,
       go: () => { removeInv(I.DIAMOND, 9); addInv(B.DIAMOND_BLOCK, 1); toast('+1 Bloque de diamante'); } },
+    { label: '8 piedra labrada → 1 horno (arena→cristal, fundir)', can: inv[B.COBBLE] >= 8,
+      go: () => { removeInv(B.COBBLE, 8); addInv(B.FURNACE, 1); toast('+1 Horno  (colócalo y clic derecho para cocer)'); } },
+    { label: '4 piedra labrada → 4 ladrillos de piedra (con cincel)', can: inv[B.COBBLE] >= 4 && inv[I.CHISEL] > 0,
+      go: () => { removeInv(B.COBBLE, 4); addInv(B.STONEBRICK, 4); toast('+4 Ladrillos de piedra'); } },
+    { label: '4 ladrillos de piedra → 4 piedra pulida (con cincel)', can: inv[B.STONEBRICK] >= 4 && inv[I.CHISEL] > 0,
+      go: () => { removeInv(B.STONEBRICK, 4); addInv(B.POLISHED, 4); toast('+4 Piedra pulida'); } },
     { label: '1 bloque de diamante → 9 diamantes', can: inv[B.DIAMOND_BLOCK] >= 1,
       go: () => { removeInv(B.DIAMOND_BLOCK, 1); addInv(I.DIAMOND, 9); toast('+9 Diamantes'); } },
   ];
@@ -4541,15 +4649,26 @@ function updateGearHUD() {
 function setTools(t)  { toolTier.pick = toolTier.shovel = toolTier.axe = t; saveDirty = true; toast('Forjas herramientas de ' + NAME_TIER[t]); updateGearHUD(); }
 function setArmor(t)  { armorTier = t; saveDirty = true; toast('Te ciñes una armadura de ' + NAME_TIER[t]); updateGearHUD(); }
 function forgeWeapon(itemId) { addInv(itemId, 1); toast('Has forjado: ' + NAMES[itemId] + '  (se guarda en tu inventario; selecciónala en el cinturón para luchar)'); updateGearHUD(); }
-function addRecipe(box, r) {
+function addRecipe(box, r, refresh) {
   const can = r.need.every(([id, n]) => (inv[id] || 0) >= n);
   const row = document.createElement('div'); row.className = 'craftrow';
   const btn = document.createElement('button'); btn.className = 'mbtn small'; btn.textContent = 'Hacer';
   btn.disabled = !can; btn.style.opacity = can ? 1 : 0.4;
   btn.onclick = () => { if (!r.need.every(([id, n]) => (inv[id] || 0) >= n)) return;
-    for (const [id, n] of r.need) removeInv(id, n); r.out(); renderForge(); };
+    for (const [id, n] of r.need) removeInv(id, n); r.out(); (refresh || renderForge)(); };
   const lbl = document.createElement('span'); lbl.style.flex = '1'; lbl.textContent = r.label;
   row.append(btn, lbl); box.append(row);
+}
+let furnaceOpen = false;
+function openFurnace() { furnaceOpen = true; document.exitPointerLock(); }
+function renderFurnace() {
+  const fb = $('furnacebox'); fb.innerHTML = '';
+  [
+    { label: '1 arena → 1 cristal',              need: [[B.SAND, 1]],    out: () => addInv(B.GLASS, 1) },
+    { label: '1 piedra labrada → 1 piedra lisa', need: [[B.COBBLE, 1]],  out: () => addInv(B.STONE, 1) },
+    { label: '1 mineral de hierro → 1 lingote',  need: [[B.IRONORE, 1]], out: () => addInv(I.IRON_INGOT, 1) },
+    { label: '1 mineral de oro → 1 lingote',     need: [[B.GOLDORE, 1]], out: () => addInv(I.GOLD_INGOT, 1) },
+  ].forEach(r => addRecipe(fb, r, renderFurnace));
 }
 function renderForge() {
   const sb = $('smeltbox'); sb.innerHTML = '';
@@ -4581,6 +4700,7 @@ function renderForge() {
     { label: 'Cimitarra negra (3 hierro negro)',   need: [[I.BIRON_INGOT, 3]],  out: () => forgeWeapon(I.SW_BIRON) },
     { label: 'Espada de mithril (2 mithril)',      need: [[I.MITHRIL_INGOT, 2]],out: () => forgeWeapon(I.SW_MITHRIL) },
     { label: 'Tijeras (2 hierro) — para esquilar ovejas y cabras', need: [[I.IRON_INGOT, 2]], out: () => { addInv(I.SHEARS, 1); toast('Has fabricado unas tijeras'); } },
+    { label: 'Cincel (3 hierro) — para pulir y labrar la piedra', need: [[I.IRON_INGOT, 3]], out: () => { addInv(I.CHISEL, 1); toast('Has fabricado un cincel'); } },
   ].forEach(r => addRecipe(fb, r));
   $('gearline').textContent = gearText();
 }
@@ -4701,6 +4821,7 @@ document.querySelectorAll('#scr-inv .tab').forEach(b => b.onclick = () => setInv
 $('btn-inv-close').onclick = () => { invOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-chest-close').onclick = () => { openChestKey = null; if (inWorld) canvas.requestPointerLock(); };
 $('btn-forge-close').onclick = () => { forgeOpen = false; if (inWorld) canvas.requestPointerLock(); };
+$('btn-furnace-close').onclick = () => { furnaceOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-help-close').onclick = () => { helpOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('btn-recipes-close').onclick = () => { recipesOpen = false; if (inWorld) canvas.requestPointerLock(); };
 $('help-send').onclick = () => askHelp($('help-input').value);
@@ -4738,10 +4859,11 @@ let heldBtn = null, heldT = 0;
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   digState = null; hideDigbar();
-  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; forgeOpen = false; helpOpen = false; recipesOpen = false; showScreen(null); }
+  if (locked) { invOpen = false; openChestKey = null; mapOpen = false; forgeOpen = false; furnaceOpen = false; helpOpen = false; recipesOpen = false; showScreen(null); }
   else if (inWorld) {
     if (openChestKey) showScreen('chest');
     else if (forgeOpen) showScreen('forge');
+    else if (furnaceOpen) showScreen('furnace');
     else if (invOpen) showScreen('inv');
     else if (mapOpen) showScreen('map');
     else if (helpOpen) showScreen('help');
@@ -4776,6 +4898,7 @@ document.addEventListener('keydown', e => {
     else if (invOpen) { invOpen = false; canvas.requestPointerLock(); }
     else if (openChestKey) { openChestKey = null; canvas.requestPointerLock(); }
     else if (forgeOpen) { forgeOpen = false; canvas.requestPointerLock(); }
+    else if (furnaceOpen) { furnaceOpen = false; canvas.requestPointerLock(); }
   }
   if (e.code === 'KeyF' && locked) { if (player.mount) dismount(); else if (player.boat) disembarkBoat(); }
   if (e.code === 'KeyV' && locked) { camMode = (camMode + 1) % 2; toast(camMode ? 'Cámara en 3ª persona' : 'Cámara en 1ª persona'); }
@@ -4861,6 +4984,26 @@ function rainAccumulate(now) {
 function drainPuddles() {
   for (const key of puddles) { const c = key.split(','); if (worldGetBlock(+c[0], +c[1], +c[2]) === B.WATER) fluidSet(+c[0], +c[1], +c[2], B.AIR, 0); }
   puddles.clear();
+}
+// los bosques se regeneran: de vez en cuando brota un árbol nuevo en hierba despejada cerca del jugador
+let nextRegrow = 0;
+function regrowTrees(now) {
+  if (isGuest || !inWorld || godmode) return;
+  if (now < nextRegrow) return;
+  nextRegrow = now + 6000;
+  const ang = Math.random() * 6.283, r = 16 + Math.random() * 24;
+  const x = Math.round(player.x + Math.cos(ang) * r), z = Math.round(player.z + Math.sin(ang) * r);
+  const b = biomeAt(x, z);
+  if (b !== BIOME.SHIRE && b !== BIOME.LOTHLORIEN) return;
+  let sy = -1;
+  for (let y = WH - 1; y > 1; y--) { if (worldGetBlock(x, y, z) !== B.AIR) { sy = y; break; } }
+  if (sy < 0 || worldGetBlock(x, sy, z) !== B.GRASS) return;
+  if (worldGetBlock(x, sy + 1, z) !== B.AIR || worldGetBlock(x, sy + 5, z) !== B.AIR) return;   // sitio para crecer
+  for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {           // no amontonar troncos
+    const t = worldGetBlock(x + dx, sy + 1, z + dz);
+    if (t === B.LOG || t === B.MLOG || t === B.BIRCHLOG) return;
+  }
+  if (b === BIOME.LOTHLORIEN) growMallorn(x, sy + 1, z); else growTree(x, sy + 1, z);
 }
 function maybeChangeWeather(now) {
   if (isGuest) return;
@@ -4954,7 +5097,7 @@ function step(now) {
       if (heldBtn === 0 && now - lastSwing > 280) swing(now);
       else if (heldBtn === 2 && now - heldT > 240) { tryPlace(false); heldT = now; }
     }
-    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); maybeChangeWeather(now); rainAccumulate(now); }
+    if (!isGuest) { processReacts(now); processFluids(now); growCrops(now); trySpawn(now); trySpawnAnimal(now); maybeChangeWeather(now); rainAccumulate(now); regrowTrees(now); }
     updateMobs(dt, now);
     updateRain(dt);
     updateTorchLights(now);
@@ -5041,6 +5184,7 @@ window.G = {
   setDayRaw(t) { dayT = t; }, dayInfo: () => ({ dayT, sunY: sunY(), noche: isNight(), len: DAY_LEN }),
   weather: () => weather, setWeather, rainVisible: () => !!(rainPts && rainPts.visible),
   rainAccumulate, drainPuddles, puddles: () => puddles.size, torches: () => torches.size, updateTorchLights,
+  regrowTrees, growTree, openFurnace, renderFurnace, toggleDoor,
   torchLitCount: () => torchLights.filter(L => L.visible).length, buildSelfMesh, humanoidMesh,
   toggleCreative, creative: () => creative,
   helpMatch: (q) => { const tokens = normTxt(q).split(/[^a-z0-9]+/).filter(t => t.length >= 2); let best = null, bs = 0; for (const e of HELP_KB) { const s = helpScore(e, tokens); if (s > bs) { bs = s; best = e; } } return { kw: (best && bs >= 2) ? best.k[0] : null, score: bs }; },
