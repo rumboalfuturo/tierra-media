@@ -386,6 +386,9 @@ window.addEventListener('error', e => {
 /* ============================================================
    CONSTANTES
 ============================================================ */
+// versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
+// Súbela cuando cambie la generación del terreno o el formato de red.
+const GAME_VERSION = 5;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 256;             // altura del mundo (subsuelo muy profundo: ~200 niveles bajo la superficie)
@@ -3503,10 +3506,11 @@ function hostGame(attempt = 0) {
 function onHostData(conn, m) {
   if (!m || typeof m !== 'object') return;
   if (m.t === 'hello') {
+    if (m.gv !== GAME_VERSION) toast('⚠ ' + (m.name || 'El invitado') + ' tiene una versión distinta del juego — que recargue la página (Ctrl+Shift+R)');
     conns.set(conn.peer, { conn, name: m.name, color: m.color });
     addAvatar(conn.peer, m.name, m.color, SPAWN.x, 24, SPAWN.z);
     conn.send({
-      t: 'welcome', seed: SEED, dayT,
+      t: 'welcome', seed: SEED, dayT, gv: GAME_VERSION,
       name: worldDisplayName,
       edits: flattenEdits(),
       chests: Object.fromEntries([...chests].filter(([k]) => k[0] !== '@')),
@@ -3573,7 +3577,7 @@ function joinGame(code) {
   });
   peer.on('open', () => {
     hostConn = peer.connect('tmedia-' + code, { reliable: true });
-    hostConn.on('open', () => hostConn.send({ t: 'hello', name: profile.name, color: profile.color }));
+    hostConn.on('open', () => hostConn.send({ t: 'hello', name: profile.name, color: profile.color, gv: GAME_VERSION }));
     hostConn.on('data', m => onGuestData(m, code));
     hostConn.on('close', () => {
       if (inWorld && isGuest) {
@@ -3589,6 +3593,7 @@ function onGuestData(m, code) {
   if (m.t === 'welcome') {
     clearTimeout(joinTimeout);
     joinStatus('');
+    if (m.gv !== GAME_VERSION) { joinStatus('Tu juego está desactualizado respecto al anfitrión. Recarga la página con Ctrl+Shift+R y vuelve a unirte.'); return; }
     const byChunk = {};
     for (const [x, y, z, id] of m.edits) {
       const ck = (x >> 4) + ',' + (z >> 4);
@@ -3597,7 +3602,7 @@ function onGuestData(m, code) {
     isGuest = true;
     roomCode = code;
     startWorld({ name: m.name || 'Partida remota', seed: m.seed },
-               { dayT: m.dayT, edits: byChunk, chests: m.chests || {} }, 'guest');
+               { ver: 2, dayT: m.dayT, edits: byChunk, chests: m.chests || {} }, 'guest');   // ver:2 = ya viene del anfitrión a la altura correcta (no remigrar)
     for (const p of m.players) addAvatar(p.id, p.name, p.color, p.x, p.y, p.z);
     netTickStart();
     updateNetInfo();
