@@ -3782,6 +3782,8 @@ function onGuestData(m, code) {
     updateNetInfo();
   } else if (m.t === 'editbatch') {
     for (const e of m.edits) netApplySet(e[0], e[1], e[2], e[3]);   // construcciones del anfitrión, en lotes
+  } else if (m.t === 'drybatch') {
+    for (const c of m.cells) netApplySet(c[0], c[1], c[2], B.AIR);  // el anfitrión secó estas celdas (drenado)
   } else if (m.t === 'editdone') {
     if (m.n) toast('Mundo sincronizado (' + m.n + ' bloques del anfitrión)');
   } else if (m.t === 'set') {
@@ -4992,13 +4994,12 @@ function clearPuddle(k) {
   fluidLvl.delete(k); puddles.delete(k);
 }
 // secar una celda de forma persistente y SIN reprogramar fluido (para no rellenarla desde los vecinos)
-function dryCell(x, y, z) {
-  const k = x + ',' + y + ',' + z;
+function dryCell(x, y, z, quiet) {
   recordEdit(x, y, z, B.AIR);
   setBlockRaw(x, y, z, B.AIR);
-  fluidLvl.delete(k);
+  fluidLvl.delete(x + ',' + y + ',' + z);
   saveDirty = true;
-  if (isHost) broadcast({ t: 'set', x, y, z, id: B.AIR });
+  if (!quiet && isHost) broadcast({ t: 'set', x, y, z, id: B.AIR });
 }
 function rainAccumulate(now) {
   if (isGuest || weather !== 'rain' || godmode || creative) return;
@@ -5013,7 +5014,7 @@ function rainAccumulate(now) {
   if (worldGetBlock(x, sy + 1, z) !== B.AIR || !isOpenSky(x, sy + 1, z)) return;   // a cielo abierto (bajo techo no llueve)
   const k = x + ',' + (sy + 1) + ',' + z;
   if (puddles.has(k) || worldGetBlock(x, sy + 1, z) === B.WATER) return;
-  const life = 22000 + Math.random() * 16000;
+  const life = 9000 + Math.random() * 9000;                    // se evaporan rápido
   setPuddle(x, sy + 1, z, life);                               // un bloque de charco
   for (const [dx, dz] of HORIZ) {                              // a veces 1–2 contiguos del mismo nivel (charco pequeño)
     if (Math.random() < 0.4 && worldGetBlock(x + dx, sy, z + dz) === worldGetBlock(x, sy, z)
@@ -5027,27 +5028,29 @@ function tickPuddles(now) {
   for (const [k, exp] of puddles) if (t > exp) clearPuddle(k);   // se evaporan con el tiempo
 }
 function drainPuddles() { for (const k of [...puddles.keys()]) clearPuddle(k); }   // secar todos (al escampar / cambiar de mundo)
-// seca poco a poco el agua poco profunda y a cielo abierto POR ENCIMA del nivel del mar:
-// vacía zonas anegadas y limpia las inundaciones que quedaron guardadas de antes (no toca lagos ni ríos)
+// seca rápido el agua poco profunda y a cielo abierto POR ENCIMA del nivel del mar:
+// vacía zonas anegadas y limpia las inundaciones que quedaron guardadas (no toca lagos ni ríos)
+let drainIdx = 0;
 function drainFloods(now) {
   if (isGuest || !inWorld || godmode) return;
   if (now < nextDrain) return;
-  nextDrain = now + 1000;
+  nextDrain = now + 350;
   const px = Math.floor(player.x), pz = Math.floor(player.z);
-  let removed = 0;
-  for (let tries = 0; tries < 80 && removed < 6; tries++) {
-    const x = px + ((Math.random() * 70) | 0) - 35, z = pz + ((Math.random() * 70) | 0) - 35;
+  const R = 40, W = 2 * R;
+  const dried = [];
+  for (let i = 0; i < 2000 && dried.length < 60; i++) {       // barrido sistemático del área (cubre todo, no por azar)
+    drainIdx = (drainIdx + 1) % (W * W);
+    const x = px + (drainIdx % W) - R, z = pz + ((drainIdx / W) | 0) - R;
     let y = -1;
     for (let yy = WH - 2; yy > WATER_Y; yy--) { if (worldGetBlock(x, yy, z) === B.WATER) { y = yy; break; } }   // agua elevada (lluvia/inundación)
     if (y < 0) continue;
     if (worldGetBlock(x, y + 1, z) !== B.AIR) continue;        // bajo techo no se evapora
-    // solo agua POCO PROFUNDA (suelo sólido a 1–2 bloques): no vacía estanques hondos hechos a propósito
-    if (!isSolid(worldGetBlock(x, y - 1, z)) && !isSolid(worldGetBlock(x, y - 2, z))) continue;
-    const k = x + ',' + y + ',' + z;
-    if (puddles.has(k)) continue;                              // los charcos gestionados ya caducan solos
-    dryCell(x, y, z);                                          // quitar persistente y sin reflujo (sobrescribe la inundación guardada)
-    removed++;
+    if (!isSolid(worldGetBlock(x, y - 1, z)) && !isSolid(worldGetBlock(x, y - 2, z))) continue;   // solo agua poco profunda (no estanques hondos)
+    if (puddles.has(x + ',' + y + ',' + z)) continue;          // los charcos gestionados ya caducan solos
+    dryCell(x, y, z, true);                                    // quitar persistente y sin reflujo (silencioso: se manda en lote)
+    dried.push([x, y, z]);
   }
+  if (dried.length && isHost) broadcast({ t: 'drybatch', cells: dried });   // un solo mensaje en vez de decenas
 }
 // los bosques se regeneran: de vez en cuando brota un árbol nuevo en hierba despejada cerca del jugador
 let nextRegrow = 0;
