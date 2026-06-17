@@ -5044,8 +5044,7 @@ function drainFloods(now) {
     let y = -1;
     for (let yy = WH - 2; yy > WATER_Y; yy--) { if (worldGetBlock(x, yy, z) === B.WATER) { y = yy; break; } }   // agua elevada (lluvia/inundación)
     if (y < 0) continue;
-    if (worldGetBlock(x, y + 1, z) !== B.AIR) continue;        // bajo techo no se evapora
-    if (!isSolid(worldGetBlock(x, y - 1, z)) && !isSolid(worldGetBlock(x, y - 2, z))) continue;   // solo agua poco profunda (no estanques hondos)
+    if (worldGetBlock(x, y + 1, z) !== B.AIR) continue;        // bajo techo / encerrada no se evapora
     if (puddles.has(x + ',' + y + ',' + z)) continue;          // los charcos gestionados ya caducan solos
     dryCell(x, y, z, true);                                    // quitar persistente y sin reflujo (silencioso: se manda en lote)
     dried.push([x, y, z]);
@@ -5074,10 +5073,17 @@ function regrowTrees(now) {
 }
 function maybeChangeWeather(now) {
   if (isGuest) return;
-  if (now < nextWeatherChange) { return; }
-  nextWeatherChange = now + (60 + Math.random() * 150) * 1000;   // 1–3.5 min por estado
+  if (now < nextWeatherChange) return;
   const r = Math.random();
-  const w = r < 0.62 ? 'clear' : r < 0.85 ? 'rain' : 'fog';
+  let w, dur;
+  if (weather === 'clear') {                       // desde despejado: casi siempre sigue despejado un buen rato
+    if (r < 0.78) { w = 'clear'; dur = 240 + Math.random() * 240; }     // 4–8 min de buen tiempo
+    else if (r < 0.92) { w = 'rain'; dur = 35 + Math.random() * 55; }   // lluvia corta y ocasional (0.6–1.5 min)
+    else { w = 'fog'; dur = 50 + Math.random() * 60; }
+  } else {                                         // tras lluvia/niebla, vuelve a despejar
+    w = 'clear'; dur = 240 + Math.random() * 240;
+  }
+  nextWeatherChange = now + dur * 1000;
   setWeather(w);
   if (isHost) broadcast({ t: 'weather', w });
 }
