@@ -35,7 +35,7 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 | E | (junto a un bote) subir al bote · (en el bote) desembarcar |
 | F | bajar de la montura o del bote |
 | V | cambiar cámara (1ª / 3ª persona) |
-| R | volver a La Comarca |
+| R | volver voluntariamente a La Comarca (a salvo) |
 | Esc | menú |
 
 ## 🌊 Mundo vivo

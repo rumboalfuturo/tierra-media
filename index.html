@@ -2969,12 +2969,32 @@ function damage(amt, cause) {
   if (health <= 0) die(cause);
 }
 function heal(amt) { health = Math.min(HMAX, health + amt); renderHealth(); }
+// busca el sitio seguro MÁS CERCANO al punto de muerte (en el sitio si se puede; si no, lo más próximo)
+function safeRespawn(px, py, pz) {
+  const standable = (x, y, z) => y >= 1 && y + 1 < WH
+    && isSolid(worldGetBlock(x, y - 1, z)) && worldGetBlock(x, y - 1, z) !== B.LAVA
+    && worldGetBlock(x, y, z) === B.AIR && worldGetBlock(x, y + 1, z) === B.AIR;
+  for (let r = 0; r <= 7; r++) {                                    // capas 3D crecientes: lo más cerca posible
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== r) continue;   // solo la cáscara del cubo
+      if (standable(px + dx, py + dy, pz + dz)) return { x: px + dx, y: py + dy, z: pz + dz };
+    }
+  }
+  for (let r = 8; r <= 70; r++) {                                   // más lejos en la columna (p. ej. cuevas hondas)
+    if (standable(px, py - r, pz)) return { x: px, y: py - r, z: pz };
+    if (standable(px, py + r, pz)) return { x: px, y: py + r, z: pz };
+  }
+  const sx = Math.floor(SPAWN.x), sz = Math.floor(SPAWN.z);         // último recurso: La Comarca
+  return { x: sx, y: heightAt(sx, sz) + 2, z: sz };
+}
 function die(cause) {
-  toast(cause === 'lava' ? 'La lava te ha consumido… despiertas en La Comarca'
-      : cause === 'fall' ? 'Una mala caída… despiertas en La Comarca'
-      : 'Has caído… despiertas a salvo en La Comarca');
+  const r = safeRespawn(Math.floor(player.x), Math.floor(player.y), Math.floor(player.z));
+  const inPlace = Math.abs(r.x - player.x) < 8 && Math.abs(r.z - player.z) < 8;
+  toast((cause === 'lava' ? 'La lava te ha consumido…' : cause === 'fall' ? 'Una mala caída…' : 'Has caído…')
+      + (inPlace ? ' Reapareces donde caíste.' : ' Despiertas a salvo en La Comarca.'));
   health = HMAX; fireTimer = poisonTimer = submerged = 0;
-  player.x = SPAWN.x; player.z = SPAWN.z; player.y = heightAt(Math.floor(SPAWN.x), Math.floor(SPAWN.z)) + 3; player.vx = player.vy = player.vz = 0;
+  player.x = r.x + 0.5; player.z = r.z + 0.5; player.y = r.y; player.vx = player.vy = player.vz = 0;
+  peakY = player.y; wasAir = false;
   renderHealth();
 }
 function poison(seconds) { poisonTimer = Math.max(poisonTimer, seconds); }
