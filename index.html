@@ -360,7 +360,7 @@
   <div class="screen" id="scr-map">
     <h2>LA TIERRA MEDIA</h2>
     <div class="panel" style="max-width:620px;">
-      <canvas id="mapcanvas" width="560" height="560" style="width:100%; image-rendering:pixelated; border-radius:6px; border:1px solid rgba(190,160,90,.4);"></canvas>
+      <canvas id="mapcanvas" width="760" height="760" style="width:100%; image-rendering:pixelated; border-radius:6px; border:1px solid rgba(190,160,90,.4);"></canvas>
       <div class="hint">Tú eres el punto rojo · tus compañeros, puntos verdes</div>
       <button class="mbtn small" id="btn-map-close">▶ Volver al juego (M)</button>
     </div>
@@ -4971,7 +4971,8 @@ function renderMap() {
   ensureMapCache();
   const cv = $('mapcanvas'), g = cv.getContext('2d');
   const sx = cv.width / (MAPB.x1 - MAPB.x0), sz = cv.height / (MAPB.z1 - MAPB.z0);
-  g.drawImage(mapCache, 0, 0);
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.drawImage(mapCache, 0, 0, mapCache.width, mapCache.height, 0, 0, cv.width, cv.height);   // todo el mapa, escalado al lienzo
   for (const a of avatars.values()) {
     const px = (a.group.position.x - MAPB.x0) * sx, pz = (a.group.position.z - MAPB.z0) * sz;
     g.fillStyle = '#41d94c'; g.beginPath(); g.arc(px, pz, 5, 0, 7); g.fill();
