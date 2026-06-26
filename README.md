@@ -38,6 +38,10 @@ La conexión es directa entre los dos navegadores (P2P con WebRTC); no hay servi
 | R | volver voluntariamente a La Comarca (a salvo) |
 | Esc | menú |
 
+## 🗺️ El mapa de la Tierra Media (a escala)
+
+El mundo es **enorme** y sigue la geografía real (escala 1 km = 4 bloques; origen en **Hobbiton**, X→Este, Z→Sur). Apareces junto al agujero hobbit y desde ahí puedes viajar a cada lugar. Pulsa **M** para el mapa completo; cada sitio tiene una **baliza luminosa** visible de lejos. Localizaciones: La Comarca, Bree, Rivendel, Bosque Negro, Lago Largo, Erebor, Moria, Lothlórien, Isengard, Edoras, Abismo de Helm, Argonath, Minas Tirith, Osgiliath, Minas Morgul, Puerta Negra, Monte del Destino y Barad-dûr. (De momento son **construcciones básicas**: torres, el cono del Monte del Destino, los pilares de los Argonath… se irán detallando.)
+
 ## 🌊 Mundo vivo
 
 - **Días más largos**: el ciclo dura unos 12 minutos y el día ocupa la mayor parte (más tiempo de día que de noche).
