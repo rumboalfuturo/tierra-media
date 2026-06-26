@@ -398,10 +398,10 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 9;
+const GAME_VERSION = 10;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
-const WH = 256;             // altura del mundo (subsuelo muy profundo: ~200 niveles bajo la superficie)
+const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
 const RD = 5;               // distancia de renderizado en chunks
 const YBASE = 184;          // toda la superficie y los monumentos se elevan para dejar ~200 niveles de mina debajo
 const WATER_Y = 16 + YBASE;
@@ -698,7 +698,7 @@ function heightAt(wx, wz) {
   const dMarsh = Math.hypot(wx - MARSH.x, wz - MARSH.z);               // Ciénagas de los Muertos
   if (dMarsh < MARSH.r) h = lerp(15 + fbm(wx * 0.06, wz * 0.06, SEED + 6, 2) * 1.5, h, smoothstep(MARSH.r - 18, MARSH.r, dMarsh));
   for (const L of LOC) {                                               // explanadas planas en ciudades y fortalezas
-    if (L.kind === 'forest' || L.kind === 'mountain' || L.kind === 'moria' || L.kind === 'lake' || L.kind === 'volcano') continue;
+    if (L.kind === 'forest' || L.kind === 'mountain' || L.kind === 'moria' || L.kind === 'lake' || L.kind === 'volcano' || L.kind === 'argonath') continue;
     const flat = L.kind === 'city' ? 64 : L.kind === 'shire' ? 46 : 34;
     const d = Math.hypot(wx - L.x, wz - L.z);
     if (d < flat) h = lerp(PLAZA_Y, h, smoothstep(flat * 0.45, flat, d));
@@ -1242,12 +1242,14 @@ function buildStatue(set, bx, bz, gh, face) {
   for (let y = 14; y <= 27; y++) set(bx + af, gh + y, bz + 2, W);
   for (let fz = 1; fz <= 2; fz++) for (let fx = 0; fx <= 1; fx++) set(bx + af + (face > 0 ? fx : -fx), gh + 27, bz + fz, W);  // mano
 }
-/* ----- localizaciones del mapa: estructuras básicas (se detallarán más adelante) ----- */
+/* ----- localizaciones del mapa: estructuras (los detallados se construyen por key) ----- */
+const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 38 };   // radio de chunks a generar por sitio
 function genLandmarks(data, cx, cz) {
   const baseX = cx * CH, baseZ = cz * CH;
   const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 0 || y >= WH) return; data[IDX(lx, y, lz)] = id; };
   for (const L of LOC) {
-    if (L.x < baseX - 24 || L.x > baseX + CH + 24 || L.z < baseZ - 24 || L.z > baseZ + CH + 24) continue;
+    const br = LM_RADIUS[L.key] || 24;
+    if (L.x < baseX - br || L.x > baseX + CH + br || L.z < baseZ - br || L.z > baseZ + CH + br) continue;
     buildLandmark(set, L);
   }
 }
@@ -1258,9 +1260,91 @@ function lmTower(set, cx, gy, cz, h, blk) {        // torre con baliza luminosa 
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if ((dx + dz) & 1) set(cx + dx, gy + h + 1, cz + dz, blk);   // almenas
   set(cx, gy + h + 1, cz, B.MGLOW);
 }
+/* === ARGONATH: dos reyes colosales a las orillas del Anduin, palma en alto === */
+function lmKing(set, bx, bz, gy, face) {            // coloso humanoide ~62 de alto
+  const S = B.STONE, W = B.WSTONE;
+  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) for (let y = 1; y <= 6; y++) set(bx + dx, gy + y, bz + dz, S);   // pedestal
+  for (let y = 7; y <= 46; y++) { const r = y < 32 ? 4 : 3; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (dx * dx + dz * dz <= r * r + 2) set(bx + dx, gy + y, bz + dz, S); }   // túnica
+  for (let dx = -5; dx <= 5; dx++) for (let dz = -2; dz <= 2; dz++) for (let y = 47; y <= 49; y++) set(bx + dx, gy + y, bz + dz, S);   // hombros
+  for (let y = 50; y <= 57; y++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) set(bx + dx, gy + y, bz + dz, S);   // cabeza
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (Math.abs(dx) === 2 || Math.abs(dz) === 2) { set(bx + dx, gy + 58, bz + dz, W); if ((dx + dz) & 1) { set(bx + dx, gy + 59, bz + dz, W); set(bx + dx, gy + 60, bz + dz, W); } }   // corona
+  for (let y = 20; y <= 46; y++) for (let dz = -1; dz <= 1; dz++) set(bx - face * 5, gy + y, bz + dz, S);   // brazo bajado
+  for (let y = 44; y <= 58; y++) set(bx + face * 6, gy + y, bz, S);                                         // brazo alzado
+  for (let y = 47; y <= 49; y++) set(bx + face * 5, gy + y, bz, S);                                         // unión al hombro
+  for (let dz = -1; dz <= 1; dz++) for (let dy = 0; dy <= 3; dy++) set(bx + face * 6, gy + 58 + dy, bz + dz, W);   // palma en alto (clara)
+}
+function lmArgonath(set, cx, cz, gy) {
+  const SEP = 14;
+  lmKing(set, cx - SEP, cz, heightAt(cx - SEP, cz), +1);
+  lmKing(set, cx + SEP, cz, heightAt(cx + SEP, cz), -1);
+}
+/* === MONTE DEL DESTINO: cono ancho y achatado, cráter, ríos de lava, calzada en espiral === */
+function lmMountDoom(set, cx, cz, gy) {
+  const R = 22, H = 30;
+  for (let y = 0; y <= H; y++) { const rr = Math.max(3, Math.round(R * (1 - y / (H + 8))));
+    for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) { const d2 = dx * dx + dz * dz; if (d2 > rr * rr) continue;
+      if (y > H - 4 && d2 < 16) continue;                              // cráter hueco
+      set(cx + dx, gy + y, cz + dz, B.BASALT); } }
+  for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) if (dx * dx + dz * dz <= 16) set(cx + dx, gy + H - 4, cz + dz, B.LAVA);   // lava del cráter
+  for (const [ux, uz] of [[1, 0.2], [-1, -0.3], [0.3, 1], [-0.2, -1], [0.8, -0.7]]) {   // ríos de lava
+    const L = Math.hypot(ux, uz), nx = ux / L, nz = uz / L;
+    for (let y = H - 5; y >= 1; y--) { const rr = Math.max(3, Math.round(R * (1 - y / (H + 8)))); set(cx + Math.round(nx * rr), gy + y, cz + Math.round(nz * rr), B.LAVA); }
+  }
+  for (let a = 0; a < 46; a++) { const ang = a * 0.62, y = 2 + Math.floor(a * 0.55); if (y > H - 6) break;   // calzada en espiral (Sammath Naur)
+    const rr = Math.max(3, Math.round(R * (1 - y / (H + 8)))) + 1; const x = Math.round(Math.cos(ang) * rr), z = Math.round(Math.sin(ang) * rr);
+    set(cx + x, gy + y, cz + z, B.MROCK); set(cx + x, gy + y + 1, cz + z, B.AIR); set(cx + x, gy + y + 2, cz + z, B.AIR); }
+  const sr = Math.max(3, Math.round(R * (1 - (H / 2) / (H + 8))));     // entrada Sammath Naur a media altura
+  for (let dy = 1; dy <= 3; dy++) set(cx + sr, gy + ((H / 2) | 0) + dy, cz, B.AIR);
+  set(cx + sr, gy + ((H / 2) | 0), cz, B.MGLOW);
+}
+/* === PUERTA NEGRA: muro negro + dos hojas de hierro + dos Torres de los Dientes === */
+function lmTooth(set, cx, cz, gy, h) {              // torre negra dentada
+  for (let y = 1; y <= h; y++) { const r = 2; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (Math.abs(dx) === r || Math.abs(dz) === r || y <= 2) set(cx + dx, gy + y, cz + dz, B.DBRICK); }
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if ((dx + dz) & 1) set(cx + dx, gy + h + 1, cz + dz, B.OBSIDIAN);   // pináculos
+  set(cx, gy + h + 2, cz, B.FIRE);
+}
+function lmBlackGate(set, cx, cz, gy) {
+  const W = 20, H = 16;
+  for (let dx = -W; dx <= W; dx++) { if (Math.abs(dx) <= 3) continue;
+    for (let y = 1; y <= H; y++) for (let dz = -2; dz <= 2; dz++) { if (y === H && (dx & 1) === 0) continue; set(cx + dx, gy + y, cz + dz, B.DBRICK); } }   // muro almenado
+  for (let dx = -3; dx <= 3; dx++) for (let y = H - 2; y <= H; y++) for (let dz = -2; dz <= 2; dz++) set(cx + dx, gy + y, cz + dz, B.DBRICK);   // dintel
+  for (let dx = -3; dx <= 3; dx++) for (let y = 1; y <= H - 3; y++) set(cx + dx, gy + y, cz, B.OBSIDIAN);   // hojas de hierro cerradas
+  lmTooth(set, cx - W - 2, cz, gy, H + 10); lmTooth(set, cx + W + 2, cz, gy, H + 10);
+  for (let dx = -3; dx <= 3; dx++) for (let dz = 1; dz <= 8; dz++) set(cx + dx, gy, cz - dz, B.MROCK);   // calzada exterior
+  for (const fx of [-12, -7, 7, 12]) set(cx + fx, gy + H + 1, cz, B.FIRE);
+}
+/* === EREBOR: arco monumental con el Río Rápido y estatuas enanas (en la cara sur del pico) === */
+function lmDwarf(set, bx, bz, gy, face) {           // estatua enana: baja, ancha, yelmo y hacha
+  const S = B.STONE, W = B.WSTONE;
+  for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) for (let y = 1; y <= 3; y++) set(bx + dx, gy + y, bz + dz, S);   // pedestal
+  for (let y = 4; y <= 16; y++) { const r = 3; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (dx * dx + dz * dz <= r * r + 1) set(bx + dx, gy + y, bz + dz, S); }   // cuerpo
+  for (let y = 17; y <= 21; y++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) set(bx + dx, gy + y, bz + dz, S);   // cabeza+yelmo
+  for (let dx = -2; dx <= 2; dx++) set(bx + dx, gy + 22, bz, W);                          // cresta del yelmo
+  for (let y = 8; y <= 20; y++) set(bx - face * 4, gy + y, bz, S);                        // mango del hacha
+  for (let dy = -1; dy <= 1; dy++) set(bx - face * 4, gy + 20 + dy, bz + 1, S);           // hoja del hacha
+}
+function lmErebor(set, cx, cz, gy) {
+  const fz = cz + 18, fgy = heightAt(cx, fz), base = fgy - 2;          // repisa labrada en la cara sur
+  for (let dx = -9; dx <= 9; dx++) for (let dz = 0; dz <= 14; dz++) { if (Math.hypot(dx, dz) > 14) continue;   // explanada: piso + despejar la ladera
+    set(cx + dx, base, fz + dz, B.MROCK);
+    for (let y = 1; y <= 16; y++) set(cx + dx, base + y, fz + dz, B.AIR); }
+  for (let dx = -5; dx <= 5; dx++) for (let y = 1; y <= 12; y++) {     // fachada de piedra tallada con el gran arco
+    const arch = Math.abs(dx) <= 3 && y <= 9 - Math.round(dx * dx / 3);
+    set(cx + dx, base + y, fz - 1, arch ? B.AIR : B.WSTONE);
+    if (arch) set(cx + dx, base + y, fz, B.AIR); }
+  set(cx, base + 1, fz - 1, B.WATER); for (let dz = 0; dz <= 13; dz++) set(cx, base, fz + dz, B.WATER);   // el Río Rápido brota del arco
+  lmDwarf(set, cx - 7, fz + 3, base, +1); lmDwarf(set, cx + 7, fz + 3, base, -1);
+  for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (dx * dx + dz * dz <= 9) set(cx + dx, gy + 1, cz + dz, B.SNOW);   // nieve en la cima
+}
 function buildLandmark(set, L) {
   const cx = Math.floor(L.x), cz = Math.floor(L.z), gy = heightAt(cx, cz);
-  switch (L.kind) {
+  switch (L.key) {                                                    // sitios detallados (paso 2 de la biblia)
+    case 'argonath': return lmArgonath(set, cx, cz, gy);
+    case 'doom':      return lmMountDoom(set, cx, cz, gy);
+    case 'blackgate': return lmBlackGate(set, cx, cz, gy);
+    case 'erebor':    return lmErebor(set, cx, cz, gy);
+  }
+  switch (L.kind) {                                                   // genéricos (se detallarán en próximos pasos)
     case 'forest': case 'mountain': case 'lake': return;              // el bioma/terreno ya lo forma
     case 'shire': {                                                   // Hobbiton: agujero hobbit + cofre regalo
       for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
@@ -1270,22 +1354,6 @@ function buildLandmark(set, L) {
       }
       set(cx, gy + 1, cz, B.DOORX); set(cx, gy + 2, cz, B.DOORX);
       set(cx + 2, gy + 1, cz, B.CHEST);
-      return;
-    }
-    case 'volcano': {                                                 // Monte del Destino: cono con cráter de lava
-      for (let y = 1; y <= 36; y++) { const rr = Math.max(1, 10 - ((y / 4) | 0));
-        for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) if (dx * dx + dz * dz <= rr * rr) set(cx + dx, gy + y, cz + dz, B.BASALT); }
-      for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) set(cx + dx, gy + 36, cz + dz, B.LAVA);
-      return;
-    }
-    case 'argonath': {                                                // dos colosos de piedra junto al río
-      for (const s of [-1, 1]) for (let y = 1; y <= 26; y++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++)
-        set(cx + dx, gy + y, cz + s * 12 + dz, B.WSTONE);
-      return;
-    }
-    case 'gate': {                                                    // Puerta Negra: muralla con un hueco central
-      for (let dz = -11; dz <= 11; dz++) { if (Math.abs(dz) <= 1) continue;
-        for (let y = 1; y <= 11; y++) for (let dx = -1; dx <= 1; dx++) set(cx + dx, gy + y, cz + dz, B.DBRICK); }
       return;
     }
     default: {                                                        // ciudades, torres y fortalezas: torre baliza temática
