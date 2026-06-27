@@ -359,9 +359,9 @@
 
   <div class="screen" id="scr-map">
     <h2>LA TIERRA MEDIA</h2>
-    <div class="panel" style="max-width:620px;">
-      <canvas id="mapcanvas" width="760" height="760" style="width:100%; image-rendering:pixelated; border-radius:6px; border:1px solid rgba(190,160,90,.4);"></canvas>
-      <div class="hint">Tú eres el punto rojo · tus compañeros, puntos verdes</div>
+    <div class="panel" style="max-width:760px;">
+      <canvas id="mapcanvas" width="760" height="760" style="width:100%; image-rendering:pixelated; border-radius:6px; border:1px solid rgba(190,160,90,.4); cursor:pointer;"></canvas>
+      <div class="hint">Tú eres el punto rojo · compañeros en verde · <b>haz clic en un lugar para viajar allí</b></div>
       <button class="mbtn small" id="btn-map-close">▶ Volver al juego (M)</button>
     </div>
   </div>
@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 11;
+const GAME_VERSION = 12;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -409,7 +409,7 @@ const SNOW_H = 34 + YBASE;  // a partir de esta altura, cumbres nevadas
 const ROCK_H = 27 + YBASE;  // a partir de esta altura, roca desnuda (sin árboles ni flora)
 // el mapa de la Tierra Media (x crece hacia el este, z hacia el sur)
 // Mapa de la Tierra Media a escala (1 km = 4 bloques · X+ Este · Z+ Sur · origen = Hobbiton)
-const SPAWN = { x: 7.5, z: 0.5 };          // Hobbiton (La Comarca): apareces junto al agujero hobbit (en 0,0)
+const SPAWN = { x: 16.5, z: 0.5 };         // Hobbiton (La Comarca): apareces en el llano junto a La Colina
 const HOUSE = { x: 0, z: 0 };              // el agujero hobbit está en el origen
 const LOC = [
   { key:'shire',    n:'La Comarca',        x:0,    z:0,     kind:'shire' },
@@ -1243,7 +1243,7 @@ function buildStatue(set, bx, bz, gh, face) {
   for (let fz = 1; fz <= 2; fz++) for (let fx = 0; fx <= 1; fx++) set(bx + af + (face > 0 ? fx : -fx), gh + 27, bz + fz, W);  // mano
 }
 /* ----- localizaciones del mapa: estructuras (los detallados se construyen por key) ----- */
-const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 38, mtir: 52, edoras: 32 };   // radio de chunks a generar por sitio
+const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 38, mtir: 52, edoras: 32, shire: 34, loth: 34, mirkwood: 36, rivendel: 30 };   // radio de chunks a generar por sitio
 function genLandmarks(data, cx, cz) {
   const baseX = cx * CH, baseZ = cz * CH;
   const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 0 || y >= WH) return; data[IDX(lx, y, lz)] = id; };
@@ -1391,6 +1391,76 @@ function lmEdoras(set, cx, cz, gy) {
     for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { const d = Math.hypot(dx, dz); if (d > 2.2) continue;
       const mh = Math.max(1, Math.round(3 * (1 - d / 2.5))); for (let y = 1; y <= mh; y++) set(cx + mx + dx, gy + y, cz + mz + dz, y === mh ? B.GRASS : B.DIRT); } }
 }
+/* === HOBBITON: La Colina con Bolsón Cerrado, hilera de agujeros, Árbol de la Fiesta, El Agua === */
+function lmSmial(set, bx, bz, gy) {                                   // agujero hobbit pequeño
+  for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) { const d = Math.hypot(dx, dz); if (d > 4) continue;
+    const h = Math.round(4 * Math.cos(d / 4 * Math.PI / 2)); for (let y = 1; y <= h; y++) set(bx + dx, gy + y, bz + dz, y === h ? B.GRASS : B.DIRT); }
+  set(bx, gy + 1, bz + 3, B.DOORX); set(bx, gy + 2, bz + 3, B.DOORX); set(bx + 1, gy + 2, bz + 3, B.GLASS);
+}
+function lmBigOak(set, bx, bz, gy) {                                  // árbol grande
+  for (let y = 1; y <= 12; y++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (Math.abs(dx) + Math.abs(dz) < 2 || y < 3) set(bx + dx, gy + y, bz + dz, B.LOG);
+  for (let dy = -3; dy <= 5; dy++) for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) { const r = Math.hypot(dx, dy, dz); if (r <= 6 && r > 2) set(bx + dx, gy + 12 + dy, bz + dz, B.LEAVES); }
+}
+function lmHobbiton(set, cx, cz, gy) {
+  const HR = 12, HH = 11, hAt = d => Math.round(HH * Math.cos(Math.min(1, d / HR) * Math.PI / 2));
+  for (let dx = -HR; dx <= HR; dx++) for (let dz = -HR; dz <= HR; dz++) { const d = Math.hypot(dx, dz); if (d > HR) continue;   // La Colina
+    const h = hAt(d); for (let y = 1; y <= h; y++) set(cx + dx, gy + y, cz + dz, y === h ? B.GRASS : B.DIRT); }
+  const fgy = gy + hAt(5);                                            // Bolsón Cerrado (puerta + ventana redonda + chimenea)
+  set(cx, fgy + 1, cz + 5, B.DOORX); set(cx, fgy + 2, cz + 5, B.DOORX);
+  for (const [ox, oy] of [[-1, 1], [1, 1], [-1, 2], [1, 2], [0, 3]]) set(cx + ox, fgy + oy, cz + 5, B.LOG);
+  set(cx + 2, fgy + 2, cz + 5, B.GLASS);
+  set(cx, gy + hAt(0) + 1, cz, B.DBRICK); set(cx, gy + hAt(0) + 2, cz, B.DBRICK);
+  for (const [hx, hz] of [[-16, 4], [-13, -9], [14, -7], [9, 13], [-6, 17], [-19, -4]]) lmSmial(set, cx + hx, cz + hz, heightAt(cx + hx, cz + hz));
+  lmBigOak(set, cx - 22, cz - 15, heightAt(cx - 22, cz - 15));        // Árbol de la Fiesta
+  for (let dx = -30; dx <= 30; dx++) for (const sz of [23, 24]) { set(cx + dx, gy, cz + sz, B.WATER); set(cx + dx, gy - 1, cz + sz, B.WATER); set(cx + dx, gy + 1, cz + sz, B.AIR); }   // El Agua
+  for (let dz = 22; dz <= 25; dz++) for (let dx = -1; dx <= 1; dx++) set(cx + dx, gy + 1, cz + dz, B.STONEBRICK);   // puente de piedra
+  set(cx, gy + 1, cz + 13, B.CHEST);                                  // cofre regalo
+}
+/* === LOTHLÓRIEN: mallorn dorados gigantes con plataformas (talans) === */
+function lmMallorn(set, bx, bz, gy, h, plats) {
+  for (let y = 1; y <= h; y++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (Math.abs(dx) + Math.abs(dz) < 2 || y < 4) set(bx + dx, gy + y, bz + dz, B.MLOG);
+  for (let dy = -4; dy <= 7; dy++) for (let dx = -8; dx <= 8; dx++) for (let dz = -8; dz <= 8; dz++) { const r = Math.hypot(dx, dy * 1.3, dz); if (r <= 8 && r > 3) set(bx + dx, gy + h + dy, bz + dz, B.MLEAVES); }
+  for (const py of plats) { for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) { const d = Math.hypot(dx, dz); if (d > 4) continue; set(bx + dx, gy + py, bz + dz, B.PLANK); if (d > 3.2) set(bx + dx, gy + py + 1, bz + dz, B.LOG); } set(bx + 3, gy + py + 1, bz, B.MGLOW); }
+}
+function lmLothlorien(set, cx, cz, gy) {
+  lmMallorn(set, cx, cz, gy, 40, [14, 24, 33]);                       // Caras Galadhon
+  for (const [dx, dz] of [[16, 6], [-15, 10], [9, -16], [-18, -7], [20, -13], [-9, 18], [13, 17]]) {
+    const g2 = heightAt(cx + dx, cz + dz); lmMallorn(set, cx + dx, cz + dz, g2, 26 + ((dx * 3 + dz) & 7), [16, 23]); }
+}
+/* === BOSQUE NEGRO: colina con la puerta del Rey Elfo, puente de piedra sobre el río, árboles oscuros === */
+function lmMirkwood(set, cx, cz, gy) {
+  const HR = 14, HH = 10, hAt = d => Math.round(HH * Math.cos(Math.min(1, d / HR) * Math.PI / 2));
+  for (let dx = -HR; dx <= HR; dx++) for (let dz = -HR; dz <= HR; dz++) { const d = Math.hypot(dx, dz); if (d > HR) continue;
+    const h = hAt(d); for (let y = 1; y <= h; y++) set(cx + dx, gy + y, cz + dz, y === h ? B.GRASS : B.DIRT); }
+  const fgy = gy + hAt(HR - 3);                                       // gran puerta en la cara sur de la colina
+  for (let dx = -2; dx <= 2; dx++) for (let y = 1; y <= 5 - Math.abs(dx); y++) set(cx + dx, fgy + y, cz + HR - 3, B.AIR);
+  for (let dx = -3; dx <= 3; dx++) set(cx + dx, fgy + (5 - Math.abs(dx)) + 1, cz + HR - 3, B.MOSSYSTONE);
+  set(cx, fgy + 1, cz + HR - 4, B.MGLOW);
+  for (let dx = -30; dx <= 30; dx++) for (const sz of [HR + 5, HR + 6]) { set(cx + dx, gy, cz + sz, B.WATER); set(cx + dx, gy - 1, cz + sz, B.WATER); set(cx + dx, gy + 1, cz + sz, B.AIR); }   // río encantado
+  for (let dz = HR - 3; dz <= HR + 8; dz++) for (let dx = -1; dx <= 1; dx++) set(cx + dx, gy + 1, cz + dz, B.STONEBRICK);   // puente
+  for (let i = 0; i < 22; i++) { const a = i * 0.83, r = 19 + (i % 3) * 5, tx = cx + Math.round(Math.cos(a) * r), tz = cz + Math.round(Math.sin(a) * r), tg = heightAt(tx, tz), th = 9 + (i % 5);
+    for (let y = 1; y <= th; y++) set(tx, tg + y, tz, B.LOG);
+    for (let dy = -2; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dy, dz) <= 3) set(tx + dx, tg + th + dy, tz + dz, B.LEAVES); }
+}
+/* === RIVENDEL: valle con cascada y pabellones élficos de tejado puntiagudo === */
+function lmRivendel(set, cx, cz, gy) {
+  const R = 22, DEPTH = 13;
+  for (let dx = -R; dx <= R; dx++) for (let dz = -R; dz <= R; dz++) { const d = Math.hypot(dx, dz); if (d > R) continue;   // valle en cuenca
+    const floor = gy - Math.round(DEPTH * Math.cos(Math.min(1, d / R) * Math.PI / 2));
+    for (let y = floor + 1; y <= gy + 3; y++) set(cx + dx, y, cz + dz, B.AIR);
+    set(cx + dx, floor, cz + dz, d > R - 4 ? B.STONE : B.GRASS); }
+  const bf = gy - DEPTH;
+  for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) if (Math.hypot(dx, dz) <= 6) set(cx + dx, bf + 1, cz + dz, B.WATER);   // estanque
+  for (let y = bf + 1; y <= gy; y++) set(cx, y, cz - R + 3, B.WATER);   // cascada
+  for (const [px, pz, py] of [[-10, 4, bf + 6], [11, -3, bf + 7], [3, 12, bf + 5]]) {   // pabellones
+    for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) set(cx + px + dx, py, cz + pz + dz, B.PLANK);
+    for (const [ox, oz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) for (let y = 1; y <= 4; y++) set(cx + px + ox, py + y, cz + pz + oz, B.BIRCHLOG);
+    for (let k = 0; k <= 4; k++) for (let dx = -3 + k; dx <= 3 - k; dx++) for (let dz = -3; dz <= 3; dz++) set(cx + px + dx, py + 4 + k, cz + pz + dz, B.MLEAVES);
+    set(cx + px, py + 1, cz + pz, B.MGLOW); }
+  for (let i = 0; i < 10; i++) { const a = i * 0.9, tx = cx + Math.round(Math.cos(a) * (R + 3)), tz = cz + Math.round(Math.sin(a) * (R + 3)), tg = heightAt(tx, tz);   // árboles otoñales
+    for (let y = 1; y <= 6; y++) set(tx, tg + y, tz, B.LOG);
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dy, dz) <= 3) set(tx + dx, tg + 6 + dy, tz + dz, B.APPLELEAVES); }
+}
 function buildLandmark(set, L) {
   const cx = Math.floor(L.x), cz = Math.floor(L.z), gy = heightAt(cx, cz);
   switch (L.key) {                                                    // sitios detallados de la biblia
@@ -1400,19 +1470,13 @@ function buildLandmark(set, L) {
     case 'erebor':    return lmErebor(set, cx, cz, gy);
     case 'mtir':      return lmMinasTirith(set, cx, cz, gy);
     case 'edoras':    return lmEdoras(set, cx, cz, gy);
+    case 'shire':     return lmHobbiton(set, cx, cz, gy);
+    case 'loth':      return lmLothlorien(set, cx, cz, gy);
+    case 'mirkwood':  return lmMirkwood(set, cx, cz, gy);
+    case 'rivendel':  return lmRivendel(set, cx, cz, gy);
   }
   switch (L.kind) {                                                   // genéricos (se detallarán en próximos pasos)
     case 'forest': case 'mountain': case 'lake': return;              // el bioma/terreno ya lo forma
-    case 'shire': {                                                   // Hobbiton: agujero hobbit + cofre regalo
-      for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
-        const d = Math.hypot(dx, dz); if (d > 4.2) continue;
-        const dh = Math.round(Math.sqrt(Math.max(0, 18 - d * d * 2)));
-        for (let y = 1; y <= dh; y++) set(cx + dx, gy + y, cz + dz, y === dh ? B.GRASS : B.DIRT);
-      }
-      set(cx, gy + 1, cz, B.DOORX); set(cx, gy + 2, cz, B.DOORX);
-      set(cx + 2, gy + 1, cz, B.CHEST);
-      return;
-    }
     default: {                                                        // ciudades, torres y fortalezas: torre baliza temática
       const dark = L.kind === 'darktower';
       const blk = dark ? B.DBRICK : L.kind === 'fort' ? B.COBBLE : B.WSTONE;
@@ -4106,7 +4170,7 @@ function startWorld(meta, data, mode) {
   // inventario, cinturón y cofres
   chests.clear();
   if (data?.chests) for (const [k, c] of Object.entries(data.chests)) chests.set(k, c);
-  if (!data) chests.set('2,' + (PLAZA_Y + YBASE + 1) + ',0', { [B.MITHRIL]: 3 });   // el regalo del agujero hobbit (Hobbiton 0,0)
+  if (!data) chests.set('0,' + (PLAZA_Y + YBASE + 1) + ',13', { [B.MITHRIL]: 3 });   // el regalo de Hobbiton (al pie de La Colina)
   const stash = isGuest ? lsGet('tm_ginv_' + SEED, null) : data;
   inv = Object.assign({}, stash?.inv ?? { [B.PLANK]: 16, [I.PIPE_SEED]: 3, [I.BARLEY_SEED]: 3 });
   hotbarMats = Array.isArray(stash?.hotbarMats) && stash.hotbarMats.length === NMAT
@@ -4983,6 +5047,24 @@ function renderMap() {
   g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
 }
 $('btn-map-close').onclick = () => { mapOpen = false; if (inWorld) canvas.requestPointerLock(); };
+function travelTo(L) {                                                // viaje rápido: aparece junto al lugar, mirando hacia él
+  let ax, az;
+  if (Math.hypot(L.x, L.z) < 2) { ax = 8; az = 0; }                  // Hobbiton: al lado del agujero
+  else { const off = (LM_RADIUS[L.key] || 24) + 8, ang = Math.atan2(-L.z, -L.x); ax = Math.round(L.x + Math.cos(ang) * off); az = Math.round(L.z + Math.sin(ang) * off); }
+  player.x = ax + 0.5; player.y = heightAt(ax, az) + 3; player.z = az + 0.5; player.vx = player.vy = player.vz = 0;
+  yaw = Math.atan2(player.x - L.x, player.z - L.z);
+  mapOpen = false; if (inWorld) { showScreen(null); canvas.requestPointerLock(); }
+  toast('🧭 Viajas a ' + L.n);
+}
+$('mapcanvas').onclick = (e) => {                                     // clic en un marcador del mapa para viajar
+  if (!inWorld) return;
+  const cv = $('mapcanvas'), rect = cv.getBoundingClientRect();
+  const wx = (e.clientX - rect.left) / rect.width * (MAPB.x1 - MAPB.x0) + MAPB.x0;
+  const wz = (e.clientY - rect.top) / rect.height * (MAPB.z1 - MAPB.z0) + MAPB.z0;
+  let best = null, bd = 1e9;
+  for (const L of LOC) { const d = Math.hypot(L.x - wx, L.z - wz); if (d < bd) { bd = d; best = L; } }
+  if (best && bd < 360) travelTo(best);
+};
 
 /* ----- minimapa (esquina superior derecha): caché local propio, nítido ----- */
 let mmCache = null, mmCx = 1e9, mmCz = 1e9, mmSeed = null;
