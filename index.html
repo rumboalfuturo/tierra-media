@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 13;
+const GAME_VERSION = 14;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -1244,8 +1244,8 @@ function buildStatue(set, bx, bz, gh, face) {
   for (let fz = 1; fz <= 2; fz++) for (let fx = 0; fx <= 1; fx++) set(bx + af + (face > 0 ? fx : -fx), gh + 27, bz + fz, W);  // mano
 }
 /* ----- localizaciones del mapa: estructuras (los detallados se construyen por key) ----- */
-const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 38, mtir: 52, edoras: 32, shire: 34, loth: 34, mirkwood: 36, rivendel: 30,
-  bree: 34, helm: 36, isen: 36, osgiliath: 30, morgul: 36, longlake: 32 };   // radio de chunks a generar por sitio
+const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 42, mtir: 52, edoras: 32, shire: 34, loth: 34, mirkwood: 36, rivendel: 30,
+  bree: 34, helm: 36, isen: 36, osgiliath: 30, morgul: 36, longlake: 32, moria: 46 };   // radio de chunks a generar por sitio
 function genLandmarks(data, cx, cz) {
   const baseX = cx * CH, baseZ = cz * CH;
   const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 0 || y >= WH) return; data[IDX(lx, y, lz)] = id; };
@@ -1543,9 +1543,48 @@ function lmEsgaroth(set, cx, cz, gy) {
   for (const [ox, oz] of [[14, 2], [-13, 4], [3, 14], [-4, -13]]) lmHouse(set, cx + ox, cz + oz, deck, 2, 2, 5, B.LOG);
   for (let dz = -8; dz >= -26; dz--) { set(cx, deck, cz + dz, B.PLANK); if (dz % 3 === 0) for (let y = deck - 1; y >= heightAt(cx, cz + dz); y--) set(cx, y, cz + dz, B.LOG); }   // puente a la orilla
 }
+/* === MORIA / KHAZAD-DÛM: gran hall de columnas, Puente de Khazad-dûm, Cámara de Mazarbul === */
+function lmMoria(set, cx, cz, gy) {
+  const FLOOR = 178, CEIL = 196, HX = 22, HZ = 13;
+  for (let x = -HX; x <= HX; x++) for (let z = -HZ; z <= HZ; z++) {     // Gran Hall (Dwarrowdelf)
+    for (let y = FLOOR + 1; y <= CEIL; y++) set(cx + x, y, cz + z, B.AIR);
+    set(cx + x, FLOOR, cz + z, B.STONEBRICK); set(cx + x, CEIL + 1, cz + z, B.STONEBRICK); }
+  for (let x = -HX + 5; x <= HX - 5; x += 7) for (let z = -HZ + 3; z <= HZ - 3; z += 7) {   // columnas masivas en hileras
+    for (let y = FLOOR + 1; y <= CEIL; y++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + x + dx, y, cz + z + dz, B.POLISHED);
+    set(cx + x + 2, FLOOR + 2, cz + z, B.MGLOW); }
+  const mz = cz - HZ - 9;                                              // Cámara de Mazarbul (tumba de Balin)
+  for (let x = -4; x <= 4; x++) for (let z = -5; z <= 5; z++) { for (let y = FLOOR + 1; y <= FLOOR + 7; y++) set(cx + x, y, mz + z, B.AIR); set(cx + x, FLOOR, mz + z, B.STONEBRICK); set(cx + x, FLOOR + 8, mz + z, B.STONEBRICK); }
+  for (let z = mz + 5; z <= cz - HZ; z++) for (let x = -1; x <= 1; x++) { for (let y = FLOOR + 1; y <= FLOOR + 4; y++) set(cx + x, y, z, B.AIR); set(cx + x, FLOOR, z, B.STONEBRICK); }
+  for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) set(cx + x, FLOOR + 1, mz + z, B.WSTONE);   // sarcófago
+  set(cx, FLOOR + 2, mz, B.WSTONE);
+  const sh = heightAt(cx, mz); for (let y = FLOOR + 8; y <= sh; y++) set(cx, y, mz, y >= sh - 1 ? B.MGLOW : B.AIR);   // haz de luz cenital
+  for (let x = HX + 1; x <= HX + 12; x++) for (let z = -6; z <= 6; z++) for (let y = FLOOR - 28; y <= CEIL; y++) set(cx + x, y, cz + z, B.AIR);   // abismo
+  for (let x = HX + 1; x <= HX + 12; x++) for (let z = -6; z <= 6; z++) set(cx + x, FLOOR - 28, cz + z, B.LAVA);
+  for (let x = HX - 1; x <= HX + 13; x++) set(cx + x, FLOOR, cz, B.STONEBRICK);   // Puente de Khazad-dûm (estrecho)
+  for (let x = HX + 12; x <= HX + 18; x++) for (let z = -4; z <= 4; z++) { for (let y = FLOOR + 1; y <= FLOOR + 7; y++) set(cx + x, y, cz + z, B.AIR); set(cx + x, FLOOR, cz + z, B.STONEBRICK); }
+  const px = cx - HX + 2, surf = heightAt(px, cz);                     // pozo de entrada con escalera de caracol (Puerta del Oeste)
+  for (let y = FLOOR + 1; y <= surf + 1; y++) { for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dz) <= 3) set(px + dx, y, cz + dz, B.AIR);
+    const a = (y - FLOOR) * 0.7; set(px + Math.round(Math.cos(a) * 2), y, cz + Math.round(Math.sin(a) * 2), B.STONEBRICK); set(px + Math.round(Math.cos(a + 0.4) * 2), y, cz + Math.round(Math.sin(a + 0.4) * 2), B.STONEBRICK); }
+  for (let dx = -6; dx <= -3; dx++) for (let dz = -4; dz <= 4; dz++) { set(px + dx, surf, cz + dz, B.WATER); set(px + dx, surf - 1, cz + dz, B.WATER); }   // lago oscuro ante la puerta
+}
+/* === EREBOR (interior): escalinata, gran sala con columnas, oro y trono === */
+function lmEreborInterior(set, cx, cz, gy) {
+  const fz = cz + 18, gate = heightAt(cx, fz) - 1, FLOOR = gate - 22, CEIL = gate - 4;
+  for (let s = 0; s < 26; s++) { const z = fz - 2 - s, y = gate - Math.floor(s * 0.95); if (y < FLOOR + 1) break;   // escalinata descendente
+    for (let dx = -3; dx <= 3; dx++) { for (let yy = y; yy <= y + 4; yy++) set(cx + dx, yy, z, B.AIR); set(cx + dx, y - 1, z, B.POLISHED); } }
+  const z0 = cz - 6, z1 = cz - 24, HX2 = 12;                           // gran sala del tesoro
+  for (let x = -HX2; x <= HX2; x++) for (let z = z1; z <= z0; z++) { for (let y = FLOOR + 1; y <= CEIL; y++) set(cx + x, y, z, B.AIR); set(cx + x, FLOOR, z, B.POLISHED); set(cx + x, CEIL + 1, z, B.POLISHED); }
+  for (let x = -9; x <= 9; x += 6) for (let z = z1 + 3; z <= z0 - 2; z += 6) for (let y = FLOOR + 1; y <= CEIL; y++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + x + dx, y, z + dz, B.POLISHED);   // columnas
+  for (let x = -3; x <= 3; x++) for (let y = 1; y <= 5; y++) set(cx + x, FLOOR + y, z1, B.GOLDBLOCK);   // trono de oro
+  for (let i = 0; i < 36; i++) set(cx - 9 + ((i * 7) % 19), FLOOR + 1, z1 + 2 + ((i * 5) % 16), B.GOLDBLOCK);   // montones de oro
+  for (let x = -HX2; x <= HX2; x++) set(cx + x, FLOOR - 1, z1, B.LAVA);   // veta de lava al fondo
+  for (let x = -9; x <= 9; x += 6) set(cx + x, FLOOR + 2, (z0 + z1) >> 1, B.MGLOW);   // luz
+}
 function buildLandmark(set, L) {
   const cx = Math.floor(L.x), cz = Math.floor(L.z), gy = heightAt(cx, cz);
   switch (L.key) {                                                    // sitios detallados de la biblia
+    case 'moria':     return lmMoria(set, cx, cz, gy);
+    case 'erebor':    lmErebor(set, cx, cz, gy); return lmEreborInterior(set, cx, cz, gy);
     case 'bree':      return lmBree(set, cx, cz, gy);
     case 'helm':      return lmHelm(set, cx, cz, gy);
     case 'isen':      return lmIsengard(set, cx, cz, gy);
@@ -1555,7 +1594,6 @@ function buildLandmark(set, L) {
     case 'argonath': return lmArgonath(set, cx, cz, gy);
     case 'doom':      return lmMountDoom(set, cx, cz, gy);
     case 'blackgate': return lmBlackGate(set, cx, cz, gy);
-    case 'erebor':    return lmErebor(set, cx, cz, gy);
     case 'mtir':      return lmMinasTirith(set, cx, cz, gy);
     case 'edoras':    return lmEdoras(set, cx, cz, gy);
     case 'shire':     return lmHobbiton(set, cx, cz, gy);
