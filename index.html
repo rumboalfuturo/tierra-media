@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 12;
+const GAME_VERSION = 13;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -487,6 +487,7 @@ const B = {
   STONEBRICK:66, POLISHED:67, GLASS:68, FURNACE:69,
   DOORXO2:70, DOORZO2:71,   // segunda hoja de puerta: abre hacia el otro lado (puertas dobles al centro)
   SAPLING:72,               // brote plantado que crece hasta ser árbol
+  WITCHGLOW:73,             // luz verde fantasmal (Minas Morgul)
 };
 const isLadder = id => id === B.LADDER || id === B.LADDERS;
 const isDoorId = id => (id >= B.DOORX && id <= B.DOORZO) || id === B.DOORXO2 || id === B.DOORZO2;
@@ -549,7 +550,7 @@ const NAMES = {
   [B.DEEPSTONE]:'Roca profunda', [B.HARDROCK]:'Roca abisal', [B.DIAMOND_ORE]:'Mineral de diamante',
   [B.DIAMOND_BLOCK]:'Bloque de diamante',
   [B.STONEBRICK]:'Ladrillo de piedra', [B.POLISHED]:'Piedra pulida', [B.GLASS]:'Cristal', [B.FURNACE]:'Horno',
-  [B.DOORXO2]:'Puerta de madera', [B.DOORZO2]:'Puerta de madera', [B.SAPLING]:'Brote de árbol',
+  [B.DOORXO2]:'Puerta de madera', [B.DOORZO2]:'Puerta de madera', [B.SAPLING]:'Brote de árbol', [B.WITCHGLOW]:'Luz de Morgul',
   [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque', [I.DIAMOND]:'Diamante', [I.MEAT]:'Carne asada',
   [I.SAPLING]:'Semilla de árbol', [I.CHISEL]:'Cincel',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
@@ -698,7 +699,7 @@ function heightAt(wx, wz) {
   const dMarsh = Math.hypot(wx - MARSH.x, wz - MARSH.z);               // Ciénagas de los Muertos
   if (dMarsh < MARSH.r) h = lerp(15 + fbm(wx * 0.06, wz * 0.06, SEED + 6, 2) * 1.5, h, smoothstep(MARSH.r - 18, MARSH.r, dMarsh));
   for (const L of LOC) {                                               // explanadas planas en ciudades y fortalezas
-    if (L.kind === 'forest' || L.kind === 'mountain' || L.kind === 'moria' || L.kind === 'lake' || L.kind === 'volcano' || L.kind === 'argonath') continue;
+    if (L.kind === 'forest' || L.kind === 'mountain' || L.kind === 'moria' || L.kind === 'lake' || L.kind === 'volcano' || L.kind === 'argonath' || L.kind === 'ruins') continue;
     const flat = L.kind === 'city' ? 64 : L.kind === 'shire' ? 46 : 34;
     const d = Math.hypot(wx - L.x, wz - L.z);
     if (d < flat) h = lerp(PLAZA_Y, h, smoothstep(flat * 0.45, flat, d));
@@ -1243,7 +1244,8 @@ function buildStatue(set, bx, bz, gh, face) {
   for (let fz = 1; fz <= 2; fz++) for (let fx = 0; fx <= 1; fx++) set(bx + af + (face > 0 ? fx : -fx), gh + 27, bz + fz, W);  // mano
 }
 /* ----- localizaciones del mapa: estructuras (los detallados se construyen por key) ----- */
-const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 38, mtir: 52, edoras: 32, shire: 34, loth: 34, mirkwood: 36, rivendel: 30 };   // radio de chunks a generar por sitio
+const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 38, mtir: 52, edoras: 32, shire: 34, loth: 34, mirkwood: 36, rivendel: 30,
+  bree: 34, helm: 36, isen: 36, osgiliath: 30, morgul: 36, longlake: 32 };   // radio de chunks a generar por sitio
 function genLandmarks(data, cx, cz) {
   const baseX = cx * CH, baseZ = cz * CH;
   const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 0 || y >= WH) return; data[IDX(lx, y, lz)] = id; };
@@ -1461,9 +1463,95 @@ function lmRivendel(set, cx, cz, gy) {
     for (let y = 1; y <= 6; y++) set(tx, tg + y, tz, B.LOG);
     for (let dy = -2; dy <= 2; dy++) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dy, dz) <= 3) set(tx + dx, tg + 6 + dy, tz + dz, B.APPLELEAVES); }
 }
+function lmHouse(set, bx, bz, gy, w, d, h, roof) {                    // casa de entramado (paredes claras, vigas, tejado oscuro)
+  for (let dx = -w; dx <= w; dx++) for (let dz = -d; dz <= d; dz++) for (let y = 1; y <= h; y++) {
+    if (Math.abs(dx) < w && Math.abs(dz) < d) continue;
+    set(bx + dx, gy + y, bz + dz, (Math.abs(dx) === w && Math.abs(dz) === d) ? B.LOG : B.WSTONE); }
+  for (let dx = -w; dx <= w; dx++) for (let dz = -d; dz <= d; dz++) set(bx + dx, gy + h + 1, bz + dz, roof);
+  for (let k = 0; k <= w + 1; k++) for (let dz = -d - 1; dz <= d + 1; dz++) { set(bx - w - 1 + k, gy + h + 1 + k, bz + dz, roof); set(bx + w + 1 - k, gy + h + 1 + k, bz + dz, roof); }
+  set(bx, gy + 1, bz + d, B.DOORX); set(bx, gy + 2, bz + d, B.DOORX);
+  if (w > 1) { set(bx + 1, gy + 2, bz + d, B.GLASS); set(bx - 1, gy + 2, bz + d, B.GLASS); }
+}
+/* === BREE: empalizada con foso, calle de adoquín y El Poney Pisador === */
+function lmBree(set, cx, cz, gy) {
+  const R = 26;
+  for (let a = 0; a < 700; a++) { const rad = a * Math.PI / 350, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
+    if (z > R - 3 && Math.abs(x) < 3) continue;                       // puerta al sur
+    for (let y = 1; y <= 5; y++) set(cx + x, gy + y, cz + z, B.LOG); }   // empalizada de troncos
+  for (let a = 0; a < 760; a++) { const rad = a * Math.PI / 380, x = Math.round(Math.cos(rad) * (R + 2)), z = Math.round(Math.sin(rad) * (R + 2));
+    if (z > R - 1 && Math.abs(x) < 4) continue; set(cx + x, gy, cz + z, B.WATER); set(cx + x, gy - 1, cz + z, B.WATER); }   // foso
+  for (let dz = -R + 4; dz <= R - 4; dz++) for (let dx = -2; dx <= 2; dx++) set(cx + dx, gy, cz + dz, B.COBBLE);   // calle
+  lmHouse(set, cx - 6, cz, gy, 4, 5, 11, B.DBRICK); set(cx - 6, gy + 13, cz + 6, B.MGLOW);   // El Poney Pisador (3 plantas + letrero)
+  for (const [hx, hz] of [[6, -10], [7, 6], [-9, -13], [8, 14], [-8, 15]]) lmHouse(set, cx + hx, cz + hz, heightAt(cx + hx, cz + hz), 2, 2, 6, B.DBRICK);
+}
+/* === ABISMO DE HELM: Muro de la Empalizada con alcantarilla + el Cuerno de Rohan === */
+function lmHelm(set, cx, cz, gy) {
+  const R = 24;
+  for (let a = 0; a <= 400; a++) { const rad = Math.PI + a * Math.PI / 400, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);   // muro curvo al norte
+    for (let t = 0; t <= 2; t++) for (let y = 1; y <= 11; y++) { if (y === 11 && ((x + z) & 1)) continue; set(cx + x + (x > 0 ? -t : t), gy + y, cz + z, B.STONEBRICK); } }
+  for (let dx = -1; dx <= 1; dx++) for (let y = 1; y <= 2; y++) set(cx + dx, gy + y, cz - R, B.AIR);   // alcantarilla
+  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) for (let y = 1; y <= 6; y++) set(cx + dx, gy + y, cz + 12 + dz, B.STONE);   // peñón del Hornburg
+  lmTower(set, cx, gy + 6, cz + 12, 16, B.STONEBRICK);
+  for (let i = 0; i <= 18; i++) { const z = cz + 12 - i - 5, y = gy + 6 - Math.floor(i * 0.32); for (let dx = -1; dx <= 1; dx++) set(cx + dx, y, z, B.COBBLE); }   // rampa
+}
+/* === ISENGARD: anillo de piedra perfecto + Orthanc, aguja negra de cuatro cuernos === */
+function lmIsengard(set, cx, cz, gy) {
+  const R = 30;
+  for (let a = 0; a < 900; a++) { const rad = a * Math.PI / 450, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
+    if (x > R - 3 && Math.abs(z) < 3) continue;                       // túnel de entrada al este
+    for (let y = 1; y <= 9; y++) { if (y === 9 && ((x + z) & 1)) continue; set(cx + x, gy + y, cz + z, B.STONEBRICK); } }
+  for (let i = 0; i < 10; i++) { const a = i * 0.63, r = 8 + (i % 3) * 5, px = cx + Math.round(Math.cos(a) * r), pz = cz + Math.round(Math.sin(a) * r);   // fosos industriales
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { set(px + dx, gy, pz + dz, B.LAVA); set(px + dx, gy - 1, pz + dz, B.BASALT); } }
+  const H = 42;
+  for (let y = 1; y <= H; y++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { if (Math.abs(dx) + Math.abs(dz) > 3) continue; set(cx + dx, gy + y, cz + dz, B.OBSIDIAN); }   // Orthanc
+  for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) for (let y = 1; y <= 9; y++) set(cx + ox, gy + H + y, cz + oz, B.OBSIDIAN);   // cuatro cuernos
+}
+/* === OSGILIATH: ruinas blancas a ambas orillas del Anduin + puente partido === */
+function lmOsgiliath(set, cx, cz, gy) {
+  const rub = (bx, bz, bg) => {
+    for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) { if (((bx * 7 + bz * 13 + dx * 3 + dz) % 3 + 3) % 3 === 0) continue;
+      const h = 1 + ((bx + dx + bz + dz) & 3); for (let y = 1; y <= h; y++) set(bx + dx, bg + y, bz + dz, ((dx + dz) & 1) ? B.WSTONE : B.COBBLE); }
+    for (let y = 1; y <= 4 + ((bx & 3)); y++) set(bx, bg + y, bz, B.WSTONE); };   // columna rota
+  for (const [ox, oz] of [[-18, -6], [-12, 8], [-20, 10], [14, -8], [20, 6], [12, 12], [-8, -14], [16, 14]]) rub(cx + ox, cz + oz, heightAt(cx + ox, cz + oz));
+  for (let dx = -13; dx <= -2; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + dx, gy + 1, cz + dz, B.WSTONE);   // mitad oeste del puente
+  for (let dx = 2; dx <= 13; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + dx, gy + 1, cz + dz, B.WSTONE);     // mitad este
+  for (let dx = -2; dx <= 2; dx++) set(cx + dx, gy, cz, B.COBBLE);   // escombros caídos al centro
+}
+/* === MINAS MORGUL: gemela pálida de Minas Tirith con luz verde fantasmal === */
+function lmMorgul(set, cx, cz, gy) {
+  const C = 4, R0 = 20, GROW = 5;
+  for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) { const d = Math.hypot(dx, dz); let lvl = -1; for (let i = 0; i < C; i++) if (d <= R0 - i * 5) lvl = i; if (lvl < 0) continue;
+    const floor = gy + lvl * GROW; for (let y = gy; y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE); }
+  const tf = gy + (C - 1) * GROW, H = 32;
+  for (let y = 1; y <= H; y++) { const r = y < H - 6 ? 2 : 1; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (dx * dx + dz * dz <= r * r + 1) set(cx + dx, tf + y, cz + dz, B.WSTONE);
+    if (y % 4 === 0) set(cx + 2, tf + y, cz, B.WITCHGLOW); }
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + dx, tf + H + 1, cz + dz, B.WITCHGLOW);   // corona verde
+  for (let i = 0; i < 26; i++) { const a = i * 0.7, r = 5 + (i % 4) * 4, lvl = Math.min(C - 1, ((R0 - r) / 5) | 0); set(cx + Math.round(Math.cos(a) * r), gy + Math.max(0, lvl) * GROW + 1, cz + Math.round(Math.sin(a) * r), B.WITCHGLOW); }   // luz verde por la base
+  for (let dx = -R0 - 12; dx <= -R0; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + dx, gy + 1, cz + dz, B.WSTONE);   // puente blanco hacia Cirith Ungol
+}
+/* === LAGO LARGO / ESGAROTH: pueblo de madera sobre pilotes en el agua === */
+function lmEsgaroth(set, cx, cz, gy) {
+  const deck = WATER_Y + 1;
+  const plat = (bx, bz, r) => { for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { if (Math.max(Math.abs(dx), Math.abs(dz)) > r) continue;
+    set(bx + dx, deck, bz + dz, B.PLANK);
+    if ((Math.abs(dx) === r || Math.abs(dz) === r) && ((dx + dz) & 1) === 0) for (let y = deck - 1; y >= gy; y--) set(bx + dx, y, bz + dz, B.LOG); } };   // pilotes hasta el fondo
+  const sats = [[14, 2], [-13, 4], [3, 14], [-4, -13], [12, -11]];
+  plat(cx, cz, 7);
+  for (const [ox, oz] of sats) plat(cx + ox, cz + oz, 4);
+  for (const [ox, oz] of sats) { const n = Math.max(Math.abs(ox), Math.abs(oz)); for (let i = 0; i <= n; i++) set(cx + Math.round(ox * i / n), deck, cz + Math.round(oz * i / n), B.PLANK); }   // pasarelas
+  lmHouse(set, cx, cz, deck, 3, 3, 7, B.LOG);                          // casa del Maestre
+  for (const [ox, oz] of [[14, 2], [-13, 4], [3, 14], [-4, -13]]) lmHouse(set, cx + ox, cz + oz, deck, 2, 2, 5, B.LOG);
+  for (let dz = -8; dz >= -26; dz--) { set(cx, deck, cz + dz, B.PLANK); if (dz % 3 === 0) for (let y = deck - 1; y >= heightAt(cx, cz + dz); y--) set(cx, y, cz + dz, B.LOG); }   // puente a la orilla
+}
 function buildLandmark(set, L) {
   const cx = Math.floor(L.x), cz = Math.floor(L.z), gy = heightAt(cx, cz);
   switch (L.key) {                                                    // sitios detallados de la biblia
+    case 'bree':      return lmBree(set, cx, cz, gy);
+    case 'helm':      return lmHelm(set, cx, cz, gy);
+    case 'isen':      return lmIsengard(set, cx, cz, gy);
+    case 'osgiliath': return lmOsgiliath(set, cx, cz, gy);
+    case 'morgul':    return lmMorgul(set, cx, cz, gy);
+    case 'longlake':  return lmEsgaroth(set, cx, cz, gy);
     case 'argonath': return lmArgonath(set, cx, cz, gy);
     case 'doom':      return lmMountDoom(set, cx, cz, gy);
     case 'blackgate': return lmBlackGate(set, cx, cz, gy);
@@ -2183,6 +2271,10 @@ const TILE_PAINTERS = [
     actx.fillStyle = css(74, 132, 56); actx.fillRect(ox + 4, oy + 4, 8, 5); actx.fillRect(ox + 6, oy + 2, 4, 3);   // copa
     actx.fillStyle = css(96, 158, 70); px(ox, oy, 6, 5, 96, 158, 70); px(ox, oy, 9, 6, 96, 158, 70);
   },
+  /* 73 witchglow */ (ox, oy, rng) => {                      // luz verde fantasmal (cubo opaco luminoso)
+    speckle(ox, oy, [70, 150, 86], 0.14, rng);
+    for (let i = 0; i < 16; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 150, 255, 150);
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -2261,6 +2353,7 @@ const TILE_MAP = {
   [B.DOORXO2]:     { all: 23 },
   [B.DOORZO2]:     { all: 23 },
   [B.SAPLING]:     { all: 72 },
+  [B.WITCHGLOW]:   { all: 73 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -2439,7 +2532,7 @@ function buildChunkMesh(ch) {
       }
       continue;
     }
-    const bucket = (id === B.WATER || id === B.GLASS) ? buckets.water : (id === B.LAVA || id === B.FIRE || id === B.MGLOW || id === B.SOULFIRE) ? buckets.glow : buckets.solid;
+    const bucket = (id === B.WATER || id === B.GLASS) ? buckets.water : (id === B.LAVA || id === B.FIRE || id === B.MGLOW || id === B.SOULFIRE || id === B.WITCHGLOW) ? buckets.glow : buckets.solid;
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const nb = nbAt(lx + face.dir[0], ly + face.dir[1], lz + face.dir[2]);
