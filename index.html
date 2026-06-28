@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 14;
+const GAME_VERSION = 15;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -1255,8 +1255,11 @@ function genLandmarks(data, cx, cz) {
     buildLandmark(set, L);
   }
 }
+function wcol(set, wx, wz, gy, topY, blk) {        // columna de muro que baja hasta el suelo REAL (sin flotar)
+  for (let y = Math.min(heightAt(wx, wz), gy + 1); y <= topY; y++) set(wx, y, wz, blk);
+}
 function lmTower(set, cx, gy, cz, h, blk) {        // torre con baliza luminosa (visible de lejos)
-  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { set(cx + dx, gy + 1, cz + dz, blk); set(cx + dx, gy + 2, cz + dz, blk); }
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) wcol(set, cx + dx, cz + dz, gy, gy + 2, blk);
   for (let y = gy + 3; y <= gy + h; y++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++)
     if (Math.abs(dx) === 1 || Math.abs(dz) === 1) set(cx + dx, y, cz + dz, blk);
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if ((dx + dz) & 1) set(cx + dx, gy + h + 1, cz + dz, blk);   // almenas
@@ -1300,17 +1303,17 @@ function lmMountDoom(set, cx, cz, gy) {
   set(cx + sr, gy + ((H / 2) | 0), cz, B.MGLOW);
 }
 /* === PUERTA NEGRA: muro negro + dos hojas de hierro + dos Torres de los Dientes === */
-function lmTooth(set, cx, cz, gy, h) {              // torre negra dentada
-  for (let y = 1; y <= h; y++) { const r = 2; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (Math.abs(dx) === r || Math.abs(dz) === r || y <= 2) set(cx + dx, gy + y, cz + dz, B.DBRICK); }
+function lmTooth(set, cx, cz, gy, h) {              // torre negra dentada (hasta el suelo)
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) wcol(set, cx + dx, cz + dz, gy, (Math.abs(dx) === 2 || Math.abs(dz) === 2) ? gy + h : gy + 2, B.DBRICK);
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if ((dx + dz) & 1) set(cx + dx, gy + h + 1, cz + dz, B.OBSIDIAN);   // pináculos
   set(cx, gy + h + 2, cz, B.FIRE);
 }
 function lmBlackGate(set, cx, cz, gy) {
   const W = 20, H = 16;
   for (let dx = -W; dx <= W; dx++) { if (Math.abs(dx) <= 3) continue;
-    for (let y = 1; y <= H; y++) for (let dz = -2; dz <= 2; dz++) { if (y === H && (dx & 1) === 0) continue; set(cx + dx, gy + y, cz + dz, B.DBRICK); } }   // muro almenado
+    for (let dz = -2; dz <= 2; dz++) { wcol(set, cx + dx, cz + dz, gy, gy + H - 1, B.DBRICK); if ((dx & 1) !== 0) set(cx + dx, gy + H, cz + dz, B.DBRICK); } }   // muro almenado (hasta el suelo)
   for (let dx = -3; dx <= 3; dx++) for (let y = H - 2; y <= H; y++) for (let dz = -2; dz <= 2; dz++) set(cx + dx, gy + y, cz + dz, B.DBRICK);   // dintel
-  for (let dx = -3; dx <= 3; dx++) for (let y = 1; y <= H - 3; y++) set(cx + dx, gy + y, cz, B.OBSIDIAN);   // hojas de hierro cerradas
+  for (let dx = -3; dx <= 3; dx++) wcol(set, cx + dx, cz, gy, gy + H - 3, B.OBSIDIAN);   // hojas de hierro cerradas
   lmTooth(set, cx - W - 2, cz, gy, H + 10); lmTooth(set, cx + W + 2, cz, gy, H + 10);
   for (let dx = -3; dx <= 3; dx++) for (let dz = 1; dz <= 8; dz++) set(cx + dx, gy, cz - dz, B.MROCK);   // calzada exterior
   for (const fx of [-12, -7, 7, 12]) set(cx + fx, gy + H + 1, cz, B.FIRE);
@@ -1343,9 +1346,9 @@ function lmMinasTirith(set, cx, cz, gy) {
   const C = 7, R0 = 46, GROW = 5;
   const Rof = i => R0 - i * 6;                                        // 46,40,34,28,22,16,10
   const lvlAt = d => { let l = -1; for (let i = 0; i < C; i++) if (d <= Rof(i)) l = i; return l; };
-  for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) {   // pastel escalonado blanco (macizo)
+  for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) {   // pastel escalonado blanco (macizo, hasta el suelo)
     const lvl = lvlAt(Math.hypot(dx, dz)); if (lvl < 0) continue;
-    const floor = gy + lvl * GROW; for (let y = gy; y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE);
+    const floor = gy + lvl * GROW; for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE);
   }
   for (let i = 0; i < C; i++) {                                        // parapeto almenado en el borde de cada nivel
     const R = Rof(i), floor = gy + i * GROW;
@@ -1373,8 +1376,8 @@ function lmMinasTirith(set, cx, cz, gy) {
 /* === EDORAS: colina solitaria con empalizada, camino en espiral y Meduseld de tejado dorado === */
 function lmEdoras(set, cx, cz, gy) {
   const HR = 20, HH = 14;
-  for (let dx = -HR; dx <= HR; dx++) for (let dz = -HR; dz <= HR; dz++) { const d = Math.hypot(dx, dz); if (d > HR) continue;   // colina
-    const h = Math.round(HH * Math.cos(d / HR * Math.PI / 2)); for (let y = 1; y <= h; y++) set(cx + dx, gy + y, cz + dz, y === h ? B.GRASS : B.DIRT); }
+  for (let dx = -HR; dx <= HR; dx++) for (let dz = -HR; dz <= HR; dz++) { const d = Math.hypot(dx, dz); if (d > HR) continue;   // colina (hasta el suelo)
+    const h = Math.round(HH * Math.cos(d / HR * Math.PI / 2)); for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= gy + h; y++) set(cx + dx, y, cz + dz, y === gy + h ? B.GRASS : B.DIRT); }
   const hAt = d => Math.round(HH * Math.cos(Math.min(1, d / HR) * Math.PI / 2)), top = gy + HH;
   const PR = HR - 3;
   for (let a = 0; a < 400; a++) { const rad = a * Math.PI / 200, x = Math.round(Math.cos(rad) * PR), z = Math.round(Math.sin(rad) * PR);   // empalizada de troncos
@@ -1433,7 +1436,7 @@ function lmLothlorien(set, cx, cz, gy) {
 function lmMirkwood(set, cx, cz, gy) {
   const HR = 14, HH = 10, hAt = d => Math.round(HH * Math.cos(Math.min(1, d / HR) * Math.PI / 2));
   for (let dx = -HR; dx <= HR; dx++) for (let dz = -HR; dz <= HR; dz++) { const d = Math.hypot(dx, dz); if (d > HR) continue;
-    const h = hAt(d); for (let y = 1; y <= h; y++) set(cx + dx, gy + y, cz + dz, y === h ? B.GRASS : B.DIRT); }
+    const h = hAt(d); for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= gy + h; y++) set(cx + dx, y, cz + dz, y === gy + h ? B.GRASS : B.DIRT); }
   const fgy = gy + hAt(HR - 3);                                       // gran puerta en la cara sur de la colina
   for (let dx = -2; dx <= 2; dx++) for (let y = 1; y <= 5 - Math.abs(dx); y++) set(cx + dx, fgy + y, cz + HR - 3, B.AIR);
   for (let dx = -3; dx <= 3; dx++) set(cx + dx, fgy + (5 - Math.abs(dx)) + 1, cz + HR - 3, B.MOSSYSTONE);
@@ -1477,7 +1480,7 @@ function lmBree(set, cx, cz, gy) {
   const R = 26;
   for (let a = 0; a < 700; a++) { const rad = a * Math.PI / 350, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
     if (z > R - 3 && Math.abs(x) < 3) continue;                       // puerta al sur
-    for (let y = 1; y <= 5; y++) set(cx + x, gy + y, cz + z, B.LOG); }   // empalizada de troncos
+    wcol(set, cx + x, cz + z, gy, gy + 5, B.LOG); }                    // empalizada de troncos (hasta el suelo)
   for (let a = 0; a < 760; a++) { const rad = a * Math.PI / 380, x = Math.round(Math.cos(rad) * (R + 2)), z = Math.round(Math.sin(rad) * (R + 2));
     if (z > R - 1 && Math.abs(x) < 4) continue; set(cx + x, gy, cz + z, B.WATER); set(cx + x, gy - 1, cz + z, B.WATER); }   // foso
   for (let dz = -R + 4; dz <= R - 4; dz++) for (let dx = -2; dx <= 2; dx++) set(cx + dx, gy, cz + dz, B.COBBLE);   // calle
@@ -1488,9 +1491,9 @@ function lmBree(set, cx, cz, gy) {
 function lmHelm(set, cx, cz, gy) {
   const R = 24;
   for (let a = 0; a <= 400; a++) { const rad = Math.PI + a * Math.PI / 400, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);   // muro curvo al norte
-    for (let t = 0; t <= 2; t++) for (let y = 1; y <= 11; y++) { if (y === 11 && ((x + z) & 1)) continue; set(cx + x + (x > 0 ? -t : t), gy + y, cz + z, B.STONEBRICK); } }
+    for (let t = 0; t <= 2; t++) { const wx = cx + x + (x > 0 ? -t : t); wcol(set, wx, cz + z, gy, gy + 10, B.STONEBRICK); if (!((x + z) & 1)) set(wx, gy + 11, cz + z, B.STONEBRICK); } }
   for (let dx = -1; dx <= 1; dx++) for (let y = 1; y <= 2; y++) set(cx + dx, gy + y, cz - R, B.AIR);   // alcantarilla
-  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) for (let y = 1; y <= 6; y++) set(cx + dx, gy + y, cz + 12 + dz, B.STONE);   // peñón del Hornburg
+  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) wcol(set, cx + dx, cz + 12 + dz, gy, gy + 6, B.STONE);   // peñón del Hornburg (hasta el suelo)
   lmTower(set, cx, gy + 6, cz + 12, 16, B.STONEBRICK);
   for (let i = 0; i <= 18; i++) { const z = cz + 12 - i - 5, y = gy + 6 - Math.floor(i * 0.32); for (let dx = -1; dx <= 1; dx++) set(cx + dx, y, z, B.COBBLE); }   // rampa
 }
@@ -1499,7 +1502,7 @@ function lmIsengard(set, cx, cz, gy) {
   const R = 30;
   for (let a = 0; a < 900; a++) { const rad = a * Math.PI / 450, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
     if (x > R - 3 && Math.abs(z) < 3) continue;                       // túnel de entrada al este
-    for (let y = 1; y <= 9; y++) { if (y === 9 && ((x + z) & 1)) continue; set(cx + x, gy + y, cz + z, B.STONEBRICK); } }
+    wcol(set, cx + x, cz + z, gy, gy + 8, B.STONEBRICK); if (!((x + z) & 1)) set(cx + x, gy + 9, cz + z, B.STONEBRICK); }
   for (let i = 0; i < 10; i++) { const a = i * 0.63, r = 8 + (i % 3) * 5, px = cx + Math.round(Math.cos(a) * r), pz = cz + Math.round(Math.sin(a) * r);   // fosos industriales
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { set(px + dx, gy, pz + dz, B.LAVA); set(px + dx, gy - 1, pz + dz, B.BASALT); } }
   const H = 42;
@@ -1521,7 +1524,7 @@ function lmOsgiliath(set, cx, cz, gy) {
 function lmMorgul(set, cx, cz, gy) {
   const C = 4, R0 = 20, GROW = 5;
   for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) { const d = Math.hypot(dx, dz); let lvl = -1; for (let i = 0; i < C; i++) if (d <= R0 - i * 5) lvl = i; if (lvl < 0) continue;
-    const floor = gy + lvl * GROW; for (let y = gy; y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE); }
+    const floor = gy + lvl * GROW; for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE); }
   const tf = gy + (C - 1) * GROW, H = 32;
   for (let y = 1; y <= H; y++) { const r = y < H - 6 ? 2 : 1; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (dx * dx + dz * dz <= r * r + 1) set(cx + dx, tf + y, cz + dz, B.WSTONE);
     if (y % 4 === 0) set(cx + 2, tf + y, cz, B.WITCHGLOW); }
