@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 15;
+const GAME_VERSION = 16;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -972,8 +972,8 @@ function processReacts(now) {
 const fluidLvl = new Map();        // "x,y,z" -> nivel 1..MAX (sin entrada = fuente, nivel 0, no se seca)
 const fluidQ = [];                 // { due, x, y, z, k }
 const fluidPending = new Set();    // claves ya en cola (evita duplicados y bucles)
-const FLUID_MAX = { [B.WATER]: 7, [B.LAVA]: 3 };
-const FLUID_DELAY = { [B.WATER]: 90, [B.LAVA]: 320 };   // la lava fluye más despacio
+const FLUID_MAX = { [B.WATER]: 7, [B.LAVA]: 7 };        // agua y lava: mismo alcance de flujo
+const FLUID_DELAY = { [B.WATER]: 90, [B.LAVA]: 90 };    // agua y lava: mismo ritmo de flujo
 const HORIZ = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 function scheduleFluid(x, y, z, delay) {
@@ -1048,12 +1048,10 @@ function updateFluidCell(x, y, z) {
       curL = newL;
     }
     if (worldGetBlock(x, y - 1, z) === B.AIR) { fluidSet(x, y - 1, z, id, 1); return; }   // cae
-    // se extiende de lado SOLO si es fuente o fluye de lado; el agua que CAE no crea charcos (estabilidad)
-    if (isSrc || !fedAbove) {
-      const spreadLvl = isSrc ? 1 : curL + 1;
-      if (spreadLvl <= maxL) for (const [dx, dz] of HORIZ)
-        if (worldGetBlock(x + dx, y, z + dz) === B.AIR) fluidSet(x + dx, y, z + dz, id, spreadLvl);
-    }
+    // sobre suelo sólido se extiende formando charco (agua y lava igual); el nivel crece hasta MAX y se detiene
+    const spreadLvl = isSrc ? 1 : curL + 1;
+    if (spreadLvl <= maxL) for (const [dx, dz] of HORIZ)
+      if (worldGetBlock(x + dx, y, z + dz) === B.AIR) fluidSet(x + dx, y, z + dz, id, spreadLvl);
   } else if (id === B.AIR) {                            // un hueco: ¿entra fluido de un vecino?
     const above = worldGetBlock(x, y + 1, z);
     if (above === B.WATER || above === B.LAVA) { fluidSet(x, y, z, above, 1); return; }   // cae dentro
@@ -1350,11 +1348,12 @@ function lmMinasTirith(set, cx, cz, gy) {
     const lvl = lvlAt(Math.hypot(dx, dz)); if (lvl < 0) continue;
     const floor = gy + lvl * GROW; for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE);
   }
-  for (let i = 0; i < C; i++) {                                        // parapeto almenado en el borde de cada nivel
+  for (let i = 0; i < C; i++) {                                        // muralla almenada con ventanas en el borde de cada nivel
     const R = Rof(i), floor = gy + i * GROW;
     for (let a = 0; a < 720; a++) { const rad = a * Math.PI / 360, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
       for (let y = floor + 1; y <= floor + 4; y++) set(cx + x, y, cz + z, B.WSTONE);
-      if ((x + z) & 1) set(cx + x, floor + 5, cz + z, B.WSTONE); }
+      if ((x + z) & 1) set(cx + x, floor + 5, cz + z, B.WSTONE);      // almenas
+      if (a % 26 === 0) { set(cx + x, floor + 2, cz + z, B.GLASS); set(cx + x, floor + 3, cz + z, B.GLASS); } }   // ventanas altas
   }
   for (let i = 0; i < C; i++) {                                        // una puerta por nivel, girando (se sube rodeando)
     const R = Rof(i), floor = gy + i * GROW, ang = 0.3 + i * 0.8;
@@ -1365,10 +1364,15 @@ function lmMinasTirith(set, cx, cz, gy) {
   for (let dx = -6; dx <= R0; dx++) { const lvl = Math.max(0, lvlAt(Math.abs(dx))), floor = gy + lvl * GROW;   // espolón de roca (proa) al este
     for (let dz = -1; dz <= 1; dz++) for (let y = floor + 1; y <= floor + 6; y++) set(cx + dx, y, cz + dz, B.MROCK); }
   for (let dx = R0 - 4; dx <= R0; dx++) for (let dz = -1; dz <= 1; dz++) for (let y = gy + 1; y <= gy + 5; y++) set(cx + dx, y, cz + dz, B.AIR);   // túnel bajo la proa, en la puerta
-  const tf = gy + (C - 1) * GROW;                                      // Ciudadela (nivel 7)
-  for (let y = 1; y <= 44; y++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (dx * dx + dz * dz <= 5) set(cx + dx, tf + y, cz + dz, B.WSTONE);   // Torre de Ecthelion
-  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if ((dx + dz) & 1) set(cx + dx, tf + 45, cz + dz, B.WSTONE);
-  set(cx, tf + 46, cz, B.MGLOW);
+  const tf = gy + (C - 1) * GROW, TH = 46;                            // Ciudadela: Torre de Ecthelion (hueca, esbelta, con ventanas)
+  for (let y = 1; y <= TH; y++) { const r = y < TH - 12 ? 2 : 1;      // se estrecha hacia arriba
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      const edge = Math.abs(dx) === r || Math.abs(dz) === r;
+      set(cx + dx, tf + y, cz + dz, (edge || y === 1 || y === TH) ? B.WSTONE : B.AIR); }
+    if (y > 4 && y % 5 === 0 && y < TH - 12) { set(cx + r, tf + y, cz, B.GLASS); set(cx - r, tf + y, cz, B.GLASS); set(cx, tf + y, cz + r, B.GLASS); set(cx, tf + y, cz - r, B.GLASS); } }   // ventanas en las cuatro caras
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if ((Math.abs(dx) === 2 || Math.abs(dz) === 2) && ((dx + dz) & 1)) set(cx + dx, tf + TH + 1, cz + dz, B.WSTONE);   // almenas
+  for (let k = 0; k <= 3; k++) { const rr = 1 + (k < 2 ? 1 : 0); for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) set(cx + dx, tf + TH + 1 + k, cz + dz, B.DBRICK); }   // chapitel de pizarra oscura
+  set(cx, tf + TH + 5, cz, B.MGLOW);                                  // baliza en la punta
   for (let y = 1; y <= 5; y++) set(cx + 5, tf + y, cz + 3, B.WSTONE);  // Árbol Blanco
   for (let dx = 3; dx <= 7; dx++) for (let dz = 1; dz <= 5; dz++) if (Math.hypot(dx - 5, dz - 3) <= 2.2 && ((dx + dz) & 1)) set(cx + dx, tf + 6, cz + dz, B.WSTONE);
   for (let dx = 3; dx <= 7; dx++) for (let dz = 1; dz <= 5; dz++) if (Math.hypot(dx - 5, dz - 3) <= 1.5) set(cx + dx, tf, cz + dz, B.WATER);   // fuente
@@ -3479,9 +3483,9 @@ const MOB_DROP = {
   cow:    () => { const o = [[I.MEAT, 1 + (Math.random() < 0.5 ? 1 : 0)]]; if (Math.random() < 0.6) o.push([I.WOLF_PELT, 1]); return o; },
   pig:    () => [[I.MEAT, 1 + (Math.random() < 0.5 ? 1 : 0)]],
   deer:   () => { const o = [[I.MEAT, 1]]; if (Math.random() < 0.6) o.push([I.WOLF_PELT, 1]); return o; },
-  fox:    () => (Math.random() < 0.5 ? [[I.WOLF_PELT, 1]] : []),
+  fox:    () => { const o = [[I.MEAT, 1]]; if (Math.random() < 0.5) o.push([I.WOLF_PELT, 1]); return o; },
   chicken:() => [[I.MEAT, 1]], fish: () => [[I.MEAT, 1]],
-  dog:    () => [], bird: () => [],
+  dog:    () => [], bird: () => [[I.MEAT, 1]],
 };
 
 // duración del día y la noche (fáciles de modificar)
