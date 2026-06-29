@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 21;
+const GAME_VERSION = 22;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -1263,8 +1263,8 @@ function buildStatue(set, bx, bz, gh, face) {
   for (let fz = 1; fz <= 2; fz++) for (let fx = 0; fx <= 1; fx++) set(bx + af + (face > 0 ? fx : -fx), gh + 27, bz + fz, W);  // mano
 }
 /* ----- localizaciones del mapa: estructuras (los detallados se construyen por key) ----- */
-const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 42, mtir: 52, edoras: 32, shire: 34, loth: 34, mirkwood: 36, rivendel: 30,
-  bree: 34, helm: 44, isen: 38, osgiliath: 30, morgul: 36, longlake: 32, moria: 46, dale: 26 };   // radio de chunks a generar por sitio
+const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 42, mtir: 52, edoras: 40, shire: 34, loth: 34, mirkwood: 36, rivendel: 30,
+  bree: 34, helm: 44, isen: 38, osgiliath: 30, morgul: 46, longlake: 32, moria: 46, dale: 26 };   // radio de chunks a generar por sitio
 function genLandmarks(data, cx, cz) {
   const baseX = cx * CH, baseZ = cz * CH;
   const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 0 || y >= WH) return; data[IDX(lx, y, lz)] = id; };
@@ -1438,26 +1438,31 @@ function lmMinasTirith(set, cx, cz, gy) {
 }
 /* === EDORAS: colina solitaria con empalizada, camino en espiral y Meduseld de tejado dorado === */
 function lmEdoras(set, cx, cz, gy) {
-  const HR = 20, HH = 14;
-  for (let dx = -HR; dx <= HR; dx++) for (let dz = -HR; dz <= HR; dz++) { const d = Math.hypot(dx, dz); if (d > HR) continue;   // colina (hasta el suelo)
-    const h = Math.round(HH * Math.cos(d / HR * Math.PI / 2)); for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= gy + h; y++) set(cx + dx, y, cz + dz, y === gy + h ? B.GRASS : B.DIRT); }
-  const hAt = d => Math.round(HH * Math.cos(Math.min(1, d / HR) * Math.PI / 2)), top = gy + HH;
-  const PR = HR - 3;
-  for (let a = 0; a < 400; a++) { const rad = a * Math.PI / 200, x = Math.round(Math.cos(rad) * PR), z = Math.round(Math.sin(rad) * PR);   // empalizada de troncos
-    if (z > PR - 3 && Math.abs(x) < 3) continue;                       // hueco de la puerta (al sur)
-    const hh = hAt(Math.hypot(x, z)); for (let y = 1; y <= 4; y++) set(cx + x, gy + hh + y, cz + z, B.LOG); }
-  for (let a = 0; a < HH * 9; a++) { const ang = a * 0.5, r = PR * (1 - a / (HH * 9)), x = Math.round(Math.cos(ang) * r), z = Math.round(Math.sin(ang) * r);   // camino en espiral
-    set(cx + x, gy + hAt(Math.hypot(x, z)), cz + z, B.PLANK); }
-  const MW = 3, ML = 7;                                                // Meduseld: salón largo
+  const HR = 22, HH = 15, hAt = d => Math.round(HH * Math.cos(Math.min(1, d / HR) * Math.PI / 2));
+  for (let dx = -HR; dx <= HR; dx++) for (let dz = -HR; dz <= HR; dz++) { const d = Math.hypot(dx, dz); if (d > HR) continue;   // la colina solitaria
+    for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= gy + hAt(d); y++) set(cx + dx, y, cz + dz, y === gy + hAt(d) ? B.GRASS : B.DIRT); }
+  const top = gy + HH, PR = HR - 3, gateNear = (x, z) => z > PR - 4 && Math.abs(x) < 3;
+  for (let a = 0; a < 440; a++) { const rad = a * Math.PI / 220, x = Math.round(Math.cos(rad) * PR), z = Math.round(Math.sin(rad) * PR);   // empalizada de troncos
+    if (gateNear(x, z)) continue; const hh = hAt(Math.hypot(x, z)); for (let y = 1; y <= 4; y++) set(cx + x, gy + hh + y, cz + z, B.LOG); }
+  for (const ta of [0.6, 1.7, 2.5, 3.9, 4.7, 5.7]) { const x = Math.round(Math.cos(ta) * PR), z = Math.round(Math.sin(ta) * PR), hh = hAt(Math.hypot(x, z)); for (let y = 1; y <= 6; y++) set(cx + x, gy + hh + y, cz + z, B.LOG); set(cx + x, gy + hh + 6, cz + z, B.FIRE); }   // torreones
+  for (const ring of [{ r: 16, h: 3 }, { r: 10, h: 4 }]) for (let a = 0; a < 6.28; a += 0.6) {   // casas de Edoras subiendo la colina (más nobles arriba)
+    const x = Math.round(Math.cos(a) * ring.r), z = Math.round(Math.sin(a) * ring.r); if (gateNear(x, z)) continue;
+    lmCityHouse(set, cx + x, cz + z, gy + hAt(ring.r), ring.h, B.PLANK, B.MROCK); }
+  for (let a = 0; a < HH * 10; a++) { const ang = a * 0.5, r = PR * (1 - a / (HH * 10)), x = Math.round(Math.cos(ang) * r), z = Math.round(Math.sin(ang) * r); set(cx + x, gy + hAt(Math.hypot(x, z)), cz + z, B.PLANK); }   // camino en espiral
+  const MW = 4, ML = 9;                                                // Meduseld, el Salón Dorado (largo, con columnas y escalinata)
   for (let dx = -MW; dx <= MW; dx++) for (let dz = -ML; dz <= ML; dz++) { set(cx + dx, top, cz + dz, B.PLANK);
-    if (Math.abs(dx) === MW || Math.abs(dz) === ML) for (let y = 1; y <= 5; y++) set(cx + dx, top + y, cz + dz, B.LOG); }
-  for (let dz = -ML; dz <= ML; dz++) for (let k = 0; k <= MW + 1; k++) { const yy = top + 6 + k;   // tejado dorado a dos aguas
-    set(cx - MW - 1 + k, yy, cz + dz, B.GOLDBLOCK); set(cx + MW + 1 - k, yy, cz + dz, B.GOLDBLOCK); }
-  for (let y = 1; y <= 3; y++) set(cx, top + y, cz + ML, B.AIR);       // puerta de Meduseld
-  set(cx, top + 8, cz, B.MGLOW);                                       // remate dorado luminoso (visible de lejos)
-  for (const [mx, mz] of [[-HR - 4, -2], [-HR - 6, 4], [-HR - 5, 9]]) {   // túmulos al pie
-    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { const d = Math.hypot(dx, dz); if (d > 2.2) continue;
-      const mh = Math.max(1, Math.round(3 * (1 - d / 2.5))); for (let y = 1; y <= mh; y++) set(cx + mx + dx, gy + y, cz + mz + dz, y === mh ? B.GRASS : B.DIRT); } }
+    if (Math.abs(dx) === MW || Math.abs(dz) === ML) for (let y = 1; y <= 6; y++) set(cx + dx, top + y, cz + dz, (Math.abs(dx) === MW && Math.abs(dz) === ML) ? B.LOG : B.PLANK); }
+  for (let dz = -ML + 2; dz <= ML - 2; dz += 3) { set(cx - MW, top + 3, cz + dz, B.GLASS); set(cx + MW, top + 3, cz + dz, B.GLASS); }   // ventanas
+  for (let dz = -ML; dz <= ML; dz++) for (let k = 0; k <= MW + 1; k++) { const yy = top + 7 + k; set(cx - MW - 1 + k, yy, cz + dz, B.GOLDBLOCK); set(cx + MW + 1 - k, yy, cz + dz, B.GOLDBLOCK); }   // tejado dorado
+  for (let dz = -ML + 1; dz <= ML - 1; dz += 3) for (let y = 1; y <= 6; y++) { set(cx - MW + 1, top + y, cz + dz, B.LOG); set(cx + MW - 1, top + y, cz + dz, B.LOG); }   // columnas talladas
+  for (let dx = -1; dx <= 1; dx++) for (let y = 1; y <= 3; y++) set(cx + dx, top + y, cz + ML, B.AIR);   // puerta
+  for (let s = 0; s <= 4; s++) for (let dx = -3; dx <= 3; dx++) set(cx + dx, top - s, cz + ML + 1 + s, B.PLANK);   // escalinata de entrada
+  for (const bx of [-2, 2]) for (let d2 = 0; d2 <= 2; d2++) set(cx + bx, top + 5 - d2, cz + ML, B.LEAVES);   // estandartes verdes (aprox)
+  set(cx, top + 9, cz, B.MGLOW);                                       // remate dorado luminoso
+  for (let row = 0; row < 2; row++) for (let i = 0; i < 4; i++) { const mx = -HR - 5 - row * 5, mz = -7 + i * 5;   // túmulos de los reyes (dos hileras)
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { const d = Math.hypot(dx, dz); if (d > 2.3) continue;
+      const mh = Math.max(1, Math.round(3 * (1 - d / 2.6))); for (let y = 1; y <= mh; y++) set(cx + mx + dx, gy + y, cz + mz + dz, y === mh ? B.GRASS : B.DIRT); }
+    set(cx + mx, gy + 4, cz + mz, B.WOOL); }   // simbelmynë (flor blanca, aprox)
 }
 /* === HOBBITON: La Colina con Bolsón Cerrado, hilera de agujeros, Árbol de la Fiesta, El Agua === */
 function lmSmial(set, bx, bz, gy) {                                   // agujero hobbit pequeño
@@ -1615,15 +1620,28 @@ function lmOsgiliath(set, cx, cz, gy) {
 }
 /* === MINAS MORGUL: gemela pálida de Minas Tirith con luz verde fantasmal === */
 function lmMorgul(set, cx, cz, gy) {
-  const C = 4, R0 = 20, GROW = 5;
-  for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) { const d = Math.hypot(dx, dz); let lvl = -1; for (let i = 0; i < C; i++) if (d <= R0 - i * 5) lvl = i; if (lvl < 0) continue;
+  const C = 5, R0 = 22, GROW = 4, Rof = i => R0 - i * 4;             // gemela pálida de Minas Tirith, más pequeña y aguda
+  const lvlAt = d => { let l = -1; for (let i = 0; i < C; i++) if (d <= Rof(i)) l = i; return l; };
+  for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) { const lvl = lvlAt(Math.hypot(dx, dz)); if (lvl < 0) continue;
     const floor = gy + lvl * GROW; for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE); }
-  const tf = gy + (C - 1) * GROW, H = 32;
-  for (let y = 1; y <= H; y++) { const r = y < H - 6 ? 2 : 1; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (dx * dx + dz * dz <= r * r + 1) set(cx + dx, tf + y, cz + dz, B.WSTONE);
-    if (y % 4 === 0) set(cx + 2, tf + y, cz, B.WITCHGLOW); }
-  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + dx, tf + H + 1, cz + dz, B.WITCHGLOW);   // corona verde
-  for (let i = 0; i < 26; i++) { const a = i * 0.7, r = 5 + (i % 4) * 4, lvl = Math.min(C - 1, ((R0 - r) / 5) | 0); set(cx + Math.round(Math.cos(a) * r), gy + Math.max(0, lvl) * GROW + 1, cz + Math.round(Math.sin(a) * r), B.WITCHGLOW); }   // luz verde por la base
-  for (let dx = -R0 - 12; dx <= -R0; dx++) for (let dz = -1; dz <= 1; dz++) set(cx + dx, gy + 1, cz + dz, B.WSTONE);   // puente blanco hacia Cirith Ungol
+  for (let i = 0; i < C; i++) { const R = Rof(i), floor = gy + i * GROW;   // murallas dentadas con ventanas de luz verde
+    for (let a = 0; a < 540; a++) { const rad = a * Math.PI / 270, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
+      for (let y = floor + 1; y <= floor + 3; y++) set(cx + x, y, cz + z, B.WSTONE);
+      if ((x + z) & 1) set(cx + x, floor + 4, cz + z, B.WSTONE);
+      if (a % 18 === 0) set(cx + x, floor + 2, cz + z, B.WITCHGLOW); } }
+  const tf = gy + (C - 1) * GROW, H = 42;                            // torre central alta, aguda, con luz verde
+  for (let y = 1; y <= H; y++) { const r = y < H - 10 ? 2 : 1;
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { const e = Math.abs(dx) === r || Math.abs(dz) === r; set(cx + dx, tf + y, cz + dz, (e || y === 1 || y === H) ? B.WSTONE : B.AIR); }
+    if (y % 3 === 0) { set(cx + r, tf + y, cz, B.WITCHGLOW); set(cx - r, tf + y, cz, B.WITCHGLOW); set(cx, tf + y, cz + r, B.WITCHGLOW); set(cx, tf + y, cz - r, B.WITCHGLOW); } }
+  for (const [ox, oz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) for (let k = 1; k <= 5; k++) set(cx + ox, tf + H + k, cz + oz, k >= 4 ? B.WITCHGLOW : B.WSTONE);   // pináculos afilados
+  set(cx, tf + H + 4, cz, B.WITCHGLOW);
+  for (let dx = -5; dx <= 5; dx++) for (let dz = 1; dz <= 6; dz++) if (Math.hypot(dx, dz - 3) <= 4) set(cx + dx, tf, cz + dz, B.POLISHED);   // patio pálido
+  for (let y = 1; y <= 5; y++) set(cx + 3, tf + y, cz + 3, B.WSTONE);   // árbol blanco muerto
+  for (let dx = 1; dx <= 5; dx++) for (let dz = 1; dz <= 5; dz++) if (Math.hypot(dx - 3, dz - 3) <= 2 && ((dx + dz) & 1)) set(cx + dx, tf + 6, cz + dz, B.WSTONE);
+  set(cx + 3, tf + 2, cz + 1, B.WITCHGLOW);
+  for (let i = 0; i < 12; i++) { const a = i * 0.6, r = R0 - 3, bx = cx + Math.round(Math.cos(a) * r), bz = cz + Math.round(Math.sin(a) * r); for (let y = 1; y <= 3 + (i % 2); y++) set(bx, gy + y, bz, B.LOG); if (i % 3 === 0) set(bx, gy + 1, bz + 1, B.WITCHGLOW); }   // jardines muertos (árboles secos)
+  for (let dx = -R0 - 18; dx <= -R0; dx++) for (let dz = -2; dz <= 2; dz++) { set(cx + dx, gy + 1, cz + dz, B.WSTONE); if (Math.abs(dz) === 2) set(cx + dx, gy + 2, cz + dz, B.WSTONE); }   // puente blanco con parapeto hacia Cirith Ungol
+  for (let dx = -R0 - 18; dx <= -R0; dx += 3) { set(cx + dx, gy + 3, cz - 2, B.WITCHGLOW); set(cx + dx, gy + 3, cz + 2, B.WITCHGLOW); }   // faroles verdes del puente
 }
 /* === LAGO LARGO / ESGAROTH: pueblo de madera sobre pilotes en el agua === */
 function lmEsgaroth(set, cx, cz, gy) {
