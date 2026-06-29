@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 16;
+const GAME_VERSION = 17;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -1364,6 +1364,14 @@ function lmMinasTirith(set, cx, cz, gy) {
   for (let dx = -6; dx <= R0; dx++) { const lvl = Math.max(0, lvlAt(Math.abs(dx))), floor = gy + lvl * GROW;   // espolón de roca (proa) al este
     for (let dz = -1; dz <= 1; dz++) for (let y = floor + 1; y <= floor + 6; y++) set(cx + dx, y, cz + dz, B.MROCK); }
   for (let dx = R0 - 4; dx <= R0; dx++) for (let dz = -1; dz <= 1; dz++) for (let y = gy + 1; y <= gy + 5; y++) set(cx + dx, y, cz + dz, B.AIR);   // túnel bajo la proa, en la puerta
+  const paveAt = (x, z, y) => { for (let w = -1; w <= 1; w++) { set(cx + x + w, y, cz + z, B.POLISHED); set(cx + x, y, cz + z + w, B.POLISHED); for (let yy = y + 1; yy <= y + 3; yy++) { set(cx + x + w, yy, cz + z, B.AIR); set(cx + x, yy, cz + z + w, B.AIR); } } };
+  { const topR = Rof(C - 1), topY = gy + (C - 1) * GROW;              // patio empedrado de la Ciudadela
+    for (let dx = -topR; dx <= topR; dx++) for (let dz = -topR; dz <= topR; dz++) if (Math.hypot(dx, dz) <= topR) set(cx + dx, topY, cz + dz, B.POLISHED); }
+  for (let i = 0; i <= C - 2; i++) {                                  // calzada que sube por las puertas (zigzag) entre terrazas
+    const r0 = Rof(i), a0 = 0.3 + i * 0.8, r1 = Rof(i + 1), a1 = 0.3 + (i + 1) * 0.8, fl = gy + i * GROW;
+    for (let s = 0; s <= 34; s++) { const t = s / 34, r = r0 + (r1 - r0) * t, a = a0 + (a1 - a0) * t; paveAt(Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r), fl); }   // tramo plano en la terraza
+    for (let s = 0; s <= GROW; s++) paveAt(Math.round(Math.cos(a1) * (r1 + 2 - s)), Math.round(Math.sin(a1) * (r1 + 2 - s)), fl + s); }   // escalera que sube por la puerta
+  for (let s = 0; s <= 14; s++) { const a = 0.3 * (1 - s / 14); paveAt(Math.round(Math.cos(a) * (R0 - 1)), Math.round(Math.sin(a) * (R0 - 1)), gy); }   // tramo final hasta la Gran Puerta
   const tf = gy + (C - 1) * GROW, TH = 46;                            // Ciudadela: Torre de Ecthelion (hueca, esbelta, con ventanas)
   for (let y = 1; y <= TH; y++) { const r = y < TH - 12 ? 2 : 1;      // se estrecha hacia arriba
     for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
