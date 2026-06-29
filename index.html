@@ -5350,13 +5350,26 @@ $('mapcanvas').onclick = (e) => {                                     // clic en
 /* ----- minimapa (esquina superior derecha): caché local propio, nítido ----- */
 let mmCache = null, mmCx = 1e9, mmCz = 1e9, mmSeed = null;
 const MM_VIEW = 200, MM_RES = 132, MM_DISP = 140;     // bloques cubiertos / px del caché / bloques mostrados
+const MM_COL = {   // color del bloque superior en el minimapa (para que se vean las estructuras)
+  [B.GRASS]: [94, 152, 72], [B.DIRT]: [120, 85, 55], [B.STONE]: [132, 136, 141], [B.SNOW]: [228, 234, 240],
+  [B.SAND]: [202, 188, 132], [B.WATER]: [50, 98, 178], [B.LAVA]: [214, 92, 28], [B.MROCK]: [108, 108, 116],
+  [B.WSTONE]: [228, 231, 236], [B.DBRICK]: [52, 50, 58], [B.OBSIDIAN]: [30, 28, 42], [B.GOLDBLOCK]: [228, 202, 72],
+  [B.POLISHED]: [184, 186, 192], [B.STONEBRICK]: [150, 150, 156], [B.COBBLE]: [126, 126, 132], [B.PLANK]: [170, 134, 86],
+  [B.LOG]: [112, 86, 56], [B.MLOG]: [124, 98, 62], [B.BIRCHLOG]: [210, 206, 190], [B.LEAVES]: [70, 120, 55],
+  [B.MLEAVES]: [202, 182, 72], [B.PINELEAVES]: [54, 94, 60], [B.BIRCHLEAVES]: [120, 160, 82], [B.APPLELEAVES]: [170, 92, 72],
+  [B.GLASS]: [172, 206, 224], [B.WITCHGLOW]: [120, 255, 140], [B.MGLOW]: [255, 236, 150], [B.FIRE]: [244, 142, 42],
+  [B.BASALT]: [48, 44, 54], [B.ASH]: [92, 86, 88], [B.MUD]: [80, 70, 55], [B.FURNACE]: [92, 92, 98], [B.FORGE]: [96, 82, 80],
+  [B.CHEST]: [150, 112, 60], [B.BARREL]: [140, 100, 60], [B.DIAMOND_BLOCK]: [120, 222, 226], [B.MITHRIL]: [150, 202, 212],
+  [B.DOORX]: [150, 110, 64], [B.DOORXO]: [150, 110, 64], [B.DOORZ]: [150, 110, 64], [B.DOORZO]: [150, 110, 64], [B.WOOL]: [235, 235, 238],
+};
 function buildMiniCache() {
   if (!mmCache) { mmCache = document.createElement('canvas'); mmCache.width = mmCache.height = MM_RES; }
   const g = mmCache.getContext('2d'), bpp = MM_VIEW / MM_RES;
   const x0 = player.x - MM_VIEW / 2, z0 = player.z - MM_VIEW / 2;
   for (let py = 0; py < MM_RES; py += 2) for (let px = 0; px < MM_RES; px += 2) {
-    const wx = Math.floor(x0 + px * bpp), wz = Math.floor(z0 + py * bpp);
-    const c = terrainColor(biomeAt(wx, wz), heightAt(wx, wz));
+    const wx = Math.floor(x0 + px * bpp), wz = Math.floor(z0 + py * bpp), hh = heightAt(wx, wz);
+    let id = -1; for (let y = hh + 36; y >= hh - 1; y--) { const b = worldGetBlock(wx, y, wz); if (b > 0) { id = b; break; } }   // bloque superior real (incluye estructuras)
+    const c = id > 0 ? (MM_COL[id] || [120, 120, 120]) : terrainColor(biomeAt(wx, wz), hh);   // si el chunk no está cargado, terreno procedural
     g.fillStyle = css(c[0], c[1], c[2]); g.fillRect(px, py, 2, 2);
   }
   mmCx = player.x; mmCz = player.z; mmSeed = SEED;
