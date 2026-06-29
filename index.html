@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 19;
+const GAME_VERSION = 20;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -1263,7 +1263,7 @@ function buildStatue(set, bx, bz, gh, face) {
 }
 /* ----- localizaciones del mapa: estructuras (los detallados se construyen por key) ----- */
 const LM_RADIUS = { argonath: 26, doom: 36, blackgate: 30, erebor: 42, mtir: 52, edoras: 32, shire: 34, loth: 34, mirkwood: 36, rivendel: 30,
-  bree: 34, helm: 36, isen: 36, osgiliath: 30, morgul: 36, longlake: 32, moria: 46 };   // radio de chunks a generar por sitio
+  bree: 34, helm: 44, isen: 36, osgiliath: 30, morgul: 36, longlake: 32, moria: 46 };   // radio de chunks a generar por sitio
 function genLandmarks(data, cx, cz) {
   const baseX = cx * CH, baseZ = cz * CH;
   const set = (wx, y, wz, id) => { const lx = wx - baseX, lz = wz - baseZ; if (lx < 0 || lx >= CH || lz < 0 || lz >= CH || y < 0 || y >= WH) return; data[IDX(lx, y, lz)] = id; };
@@ -1550,13 +1550,35 @@ function lmBree(set, cx, cz, gy) {
 }
 /* === ABISMO DE HELM: Muro de la Empalizada con alcantarilla + el Cuerno de Rohan === */
 function lmHelm(set, cx, cz, gy) {
-  const R = 24;
-  for (let a = 0; a <= 400; a++) { const rad = Math.PI + a * Math.PI / 400, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);   // muro curvo al norte
-    for (let t = 0; t <= 2; t++) { const wx = cx + x + (x > 0 ? -t : t); wcol(set, wx, cz + z, gy, gy + 10, B.STONEBRICK); if (!((x + z) & 1)) set(wx, gy + 11, cz + z, B.STONEBRICK); } }
-  for (let dx = -1; dx <= 1; dx++) for (let y = 1; y <= 2; y++) set(cx + dx, gy + y, cz - R, B.AIR);   // alcantarilla
-  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) wcol(set, cx + dx, cz + 12 + dz, gy, gy + 6, B.STONE);   // peñón del Hornburg (hasta el suelo)
-  lmTower(set, cx, gy + 6, cz + 12, 16, B.STONEBRICK);
-  for (let i = 0; i <= 18; i++) { const z = cz + 12 - i - 5, y = gy + 6 - Math.floor(i * 0.32); for (let dx = -1; dx <= 1; dx++) set(cx + dx, y, z, B.COBBLE); }   // rampa
+  const R = 24, WT = gy + 13;
+  for (const s of [-1, 1]) for (let dz = -10; dz <= 26; dz++) for (let dw = 0; dw <= 5; dw++)   // garganta: acantilados de roca a los lados
+    wcol(set, cx + s * (27 + dw), cz + dz, gy, gy + 15 + ((dz * 7 + dw) % 5), B.MROCK);
+  for (let a = 0; a <= 460; a++) { const rad = Math.PI + a * Math.PI / 460, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);   // Muro de la Empalizada (grueso, almenado, con paso de ronda)
+    for (let t = 0; t <= 3; t++) { const wx = cx + x + (x > 0 ? -t : t); wcol(set, wx, cz + z, gy, WT, B.STONEBRICK); if (t === 0 && ((x + z) & 1)) set(wx, WT + 1, cz + z, B.STONEBRICK); }
+    if (a % 46 === 0) set(cx + Math.round(Math.cos(rad) * (R - 2)), WT + 1, cz + Math.round(Math.sin(rad) * (R - 2)), B.FIRE); }   // antorchas
+  for (let dx = -1; dx <= 1; dx++) for (let y = 1; y <= 2; y++) set(cx + dx, gy + y, cz - R, B.AIR);   // alcantarilla (el punto débil)
+  for (let dz = -3; dz <= 5; dz++) { set(cx, gy, cz - R + dz, B.WATER); set(cx, gy - 1, cz - R + dz, B.WATER); }
+  for (const ta of [Math.PI + 0.55, Math.PI + 1.25, Math.PI + 1.9, Math.PI + 2.6]) {   // torres del muro
+    const x = Math.round(Math.cos(ta) * R), z = Math.round(Math.sin(ta) * R);
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { if (Math.hypot(dx, dz) > 2.4) continue; wcol(set, cx + x + dx, cz + z + dz, gy, gy + 16, B.STONEBRICK); }
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (((dx + dz) & 1) && Math.hypot(dx, dz) <= 2.4) set(cx + x + dx, gy + 17, cz + z + dz, B.STONEBRICK);
+    set(cx + x, gy + 16, cz + z, B.FIRE); }
+  for (let dx = -20; dx <= 20; dx++) for (let dz = -R + 4; dz <= 12; dz++) if (Math.hypot(dx, dz) <= R - 1) set(cx + dx, gy, cz + dz, B.COBBLE);   // patio de adoquín
+  const hz = cz + 15, hb = gy + 8;   // el Hornburg (Cuerno de Rohan) sobre su peñón
+  for (let dx = -7; dx <= 7; dx++) for (let dz = -7; dz <= 7; dz++) { const d = Math.hypot(dx, dz); if (d > 7) continue; wcol(set, cx + dx, hz + dz, gy, gy + 8 - Math.floor(d / 3), B.STONE); }   // peñón
+  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) for (let y = 1; y <= 9; y++) { const e = Math.abs(dx) === 5 || Math.abs(dz) === 5; set(cx + dx, hb + y, hz + dz, (e || y === 1) ? B.STONEBRICK : B.AIR); }   // torreón
+  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) if (((dx + dz) & 1) && (Math.abs(dx) === 5 || Math.abs(dz) === 5)) set(cx + dx, hb + 10, hz + dz, B.STONEBRICK);
+  for (let dz = -3; dz <= 3; dz += 2) for (let y = 4; y <= 7; y++) { set(cx + 5, hb + y, hz + dz, B.GLASS); set(cx - 5, hb + y, hz + dz, B.GLASS); }   // ventanas
+  for (let dx = -1; dx <= 1; dx++) for (let y = 1; y <= 3; y++) set(cx + dx, hb + y, hz - 5, B.AIR);   // puerta del Hornburg
+  const TH = 26, tx = cx - 3, tz = hz + 3;   // la torre del Cuerno
+  for (let y = 1; y <= TH; y++) { const r = 2; for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { const e = Math.abs(dx) === r || Math.abs(dz) === r; set(tx + dx, hb + 9 + y, tz + dz, (e || y === 1 || y === TH) ? B.STONEBRICK : B.AIR); } }
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if ((dx + dz) & 1) set(tx + dx, hb + 9 + TH + 1, tz + dz, B.STONEBRICK);
+  set(tx, hb + 9 + TH + 1, tz, B.MGLOW);   // baliza
+  for (let s = 0; s <= 10; s++) { const z = cz + s, y = gy + Math.round(s * 8 / 10); for (let dx = -1; dx <= 1; dx++) { set(cx + dx, y, z, B.COBBLE); for (let yy = y + 1; yy <= y + 3; yy++) set(cx + dx, yy, z, B.AIR); } }   // calzada/rampa al Hornburg
+  const caveZ = hz + 11;   // Cavernas Centelleantes: entrada con cristales
+  for (let dx = -4; dx <= 4; dx++) for (let y = 1; y <= 6; y++) { const top = 6 - Math.round(dx * dx / 5); if (y > top) continue; for (let dz = 0; dz <= 11; dz++) set(cx + dx, gy + y, caveZ + dz, B.AIR); }
+  for (let dx = -5; dx <= 5; dx++) set(cx + dx, gy + 7, caveZ, B.MROCK);   // dintel de la cueva
+  for (let i = 0; i < 20; i++) set(cx - 3 + ((i * 5) % 7), gy + 1 + (i % 4), caveZ + 2 + ((i * 3) % 9), [B.GLASS, B.DIAMOND_BLOCK, B.MGLOW][i % 3]);   // cristales (cuarzo / diamante / brillo)
 }
 /* === ISENGARD: anillo de piedra perfecto + Orthanc, aguja negra de cuatro cuernos === */
 function lmIsengard(set, cx, cz, gy) {
