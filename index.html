@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 18;
+const GAME_VERSION = 19;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -438,12 +438,21 @@ const ARG   = LOC.find(l => l.key === 'argonath');
 const MTN_MASSIF = [ { x:5000, z:-2200, r:280 },               // Erebor (la Montaña Solitaria)
                      { x:3300, z:900,   r:240 },               // Moria (Montañas Nubladas)
                      { x:3000, z:3300,  r:200 } ];             // tras el Abismo de Helm
-const MTN_RANGE  = [ { ax:3350, az:-1700, bx:3550, bz:2200, w:110 },   // Montañas Nubladas (Norte-Sur)
-                     { ax:2700, az:3400,  bx:5300, bz:4150, w:90  } ]; // Ered Nimrais / Montañas Blancas (Este-Oeste)
+const MTN_RANGE  = [ { ax:3350, az:-1700, bx:3550, bz:2200, w:110 },   // Montañas Nubladas (Hithaeglir, N-S)
+                     { ax:3350, az:-1700, bx:3050, bz:-2500, w:95 },   // Nubladas hacia el norte
+                     { ax:3550, az:2200,  bx:2850, bz:2750, w:100 },   // Nubladas hacia el sur (Isengard)
+                     { ax:3050, az:-2500, bx:5300, bz:-2450, w:90 },   // Ered Mithrin (Montañas Grises)
+                     { ax:5300, az:-2450, bx:6300, bz:-2250, w:80 },   // Colinas de Hierro (NE)
+                     { ax:2700, az:3400,  bx:5300, bz:4150, w:90  },   // Ered Nimrais / Montañas Blancas (E-O)
+                     { ax:-650, az:-1800, bx:-650, bz:1600, w:110 } ]; // Ered Luin (Montañas Azules, lejano O)
 const MORDOR_C = { x:6100, z:3750 }, MORDOR_R = 680;           // la planicie oscura de Mordor
-const FOREST_LOCS = [ { x:2500, z:-150, r:300 },              // Rivendel
-                      { x:4000, z:-1200, r:560 },             // Bosque Negro (Mirkwood)
-                      { x:3800, z:1400, r:360 } ];            // Lothlórien
+const NURNEN = { x:6100, z:4080, r:130 };                     // Mar de Núrnen (sur de Mordor)
+const RHUN   = { x:7900, z:3050, r:320 };                     // Mar de Rhûn (lejano este)
+const FOREST_LOCS = [ { x:2500, z:-150, r:300 },              // Rivendel (valle boscoso)
+                      { x:4000, z:-1200, r:620 },             // Bosque Negro (Mirkwood, enorme)
+                      { x:3800, z:1400, r:360 },              // Lothlórien
+                      { x:3150, z:2350, r:240 },              // Fangorn
+                      { x:700,  z:260,  r:170 } ];            // Bosque Viejo (al este de la Comarca)
 const PLAZA_Y = 21;                                            // nivel de las explanadas de las localizaciones (pre-YBASE)
 const ANDUIN = [ [4000,-1700], [3950,1400], [4400,2800], [5450,4000] ];   // recorrido del río Anduin
 // distancia de un punto a un segmento (para cordilleras y río)
@@ -464,6 +473,13 @@ function mountainField(wx, wz) {           // 0 (llano) .. 1 (cumbre)
   for (const M of MTN_MASSIF) m = Math.max(m, smoothstep(M.r, M.r * 0.35, Math.hypot(wx - M.x, wz - M.z)));
   for (const R of MTN_RANGE)  m = Math.max(m, smoothstep(R.w, R.w * 0.3, segDist(wx, wz, R.ax, R.az, R.bx, R.bz)));
   return m;
+}
+function mordorWall(wx, wz) {               // muralla de montañas de Mordor (Ered Lithui + Ephel Dúath) con dos pasos
+  const ring = Math.abs(Math.hypot(wx - MORDOR_C.x, wz - MORDOR_C.z) - 605);
+  if (ring > 60) return 0;
+  const ang = Math.atan2(wz - MORDOR_C.z, wx - MORDOR_C.x);
+  for (const ga of [-1.99, 2.62]) { let da = Math.abs(ang - ga); if (da > Math.PI) da = 2 * Math.PI - da; if (da < 0.20) return 0; }   // pasos: Puerta Negra y Cirith Ungol (Morgul)
+  return smoothstep(60, 16, ring);
 }
 
 const B = {
@@ -689,9 +705,13 @@ function heightAt(wx, wz) {
   const m = mountainField(wx, wz);
   if (m > 0) h += m * (10 + (fbm(wx * 0.012, wz * 0.012, SEED + 2, 4) * 0.5 + 0.5) * 36)
                  + m * fbm(wx * 0.04, wz * 0.04, SEED + 8, 3) * 7;     // cordilleras y macizos
-  if (inMordor(wx, wz)) {                                              // Mordor: meseta baja y oscura con lagos de lava
+  if (wx < -700) h = lerp(7, h, smoothstep(-1300, -700, wx));          // el Gran Mar al oeste (más allá de las Montañas Azules)
+  if (Math.hypot(wx - RHUN.x, wz - RHUN.z) < RHUN.r) h = Math.min(h, 9 + fbm(wx * 0.02, wz * 0.02, SEED + 12, 2) * 2);   // Mar de Rhûn (lejano este)
+  if (inMordor(wx, wz)) {                                              // Mordor: meseta baja, murallas de montañas y lagos de lava
     h = Math.min(h, 19 + fbm(wx * 0.02, wz * 0.02, SEED + 3, 2) * 3);
     if (fbm(wx * 0.018, wz * 0.018, SEED + 9, 2) > 0.45) h = Math.min(h, 13.5);
+    const mw = mordorWall(wx, wz); if (mw > 0) h = Math.max(h, 19 + mw * 72);   // Ered Lithui / Ephel Dúath
+    if (Math.hypot(wx - NURNEN.x, wz - NURNEN.z) < NURNEN.r) h = Math.min(h, 10);   // Mar de Núrnen
   }
   if (Math.hypot(wx - 4800, wz + 1950) < 95) h = Math.min(h, 13);      // Lago Largo
   const rv = anduinDist(wx, wz);                                       // río Anduin
@@ -1098,7 +1118,7 @@ function genChunk(cx, cz) {
       data[IDX(lx, y, lz)] = id;
     }
     if (ih < WATER_Y) {
-      const fluid = biome === BIOME.MORDOR ? B.LAVA : B.WATER;
+      const fluid = (biome === BIOME.MORDOR && Math.hypot(wx - NURNEN.x, wz - NURNEN.z) >= NURNEN.r) ? B.LAVA : B.WATER;   // Núrnen es agua, el resto de Mordor lava
       for (let y = ih + 1; y <= WATER_Y; y++) data[IDX(lx, y, lz)] = fluid;
     }
   }
@@ -5167,8 +5187,16 @@ function renderForge() {
 
 /* ----- el mapa de la Tierra Media (tecla M) ----- */
 let mapOpen = false, mapCache = null, mapCacheSeed = null;
-const MAPB = { x0: -400, z0: -2600, x1: 6900, z1: 4400 };   // cubre toda la Tierra Media a escala
+const MAPB = { x0: -1450, z0: -2750, x1: 8450, z1: 4650 };   // cubre toda la Tierra Media (mares al O y al E incluidos)
 const MARKERS = LOC.map(l => ({ x: l.x, z: l.z, n: l.n }));
+const MAP_LABELS = [                                          // rótulos geográficos (no son puntos de viaje)
+  { x:-1050, z:300,   n:'El Gran Mar' }, { x:-650, z:-700, n:'Mont. Azules' },
+  { x:7900,  z:3050,  n:'Mar de Rhûn' }, { x:6100, z:4080, n:'Mar de Núrnen' },
+  { x:3150,  z:2350,  n:'Fangorn' },     { x:700,  z:260,  n:'Bosque Viejo' },
+  { x:3450,  z:500,   n:'Mont. Nubladas' }, { x:3600, z:-2450, n:'Mont. Grises' },
+  { x:5900,  z:-2350, n:'Colinas de Hierro' }, { x:4100, z:4250, n:'Mont. Blancas' },
+  { x:3300,  z:2950,  n:'ROHAN' }, { x:5150, z:3650, n:'GONDOR' }, { x:6250, z:3500, n:'MORDOR' },
+];
 function terrainColor(b, h) {
   if (h < WATER_Y) return b === BIOME.MORDOR ? [185, 62, 18] : b === BIOME.MARSH ? [62, 78, 52] : [50, 98, 178];
   let c;
@@ -5189,12 +5217,20 @@ function ensureMapCache() {
     const mg = mapCache.getContext('2d');
     const step = Math.max(6, Math.round((MAPB.x1 - MAPB.x0) / 430));   // muestreo grueso: el mapa es enorme
     for (let wz = MAPB.z0; wz < MAPB.z1; wz += step) for (let wx = MAPB.x0; wx < MAPB.x1; wx += step) {
-      const c = terrainColor(biomeAt(wx, wz), heightAt(wx, wz));
+      const bb = biomeAt(wx, wz), hh = heightAt(wx, wz);
+      let c = terrainColor(bb, hh);
+      if (hh < WATER_Y && Math.hypot(wx - NURNEN.x, wz - NURNEN.z) < NURNEN.r) c = [50, 98, 178];   // el Mar de Núrnen es agua, no lava
       mg.fillStyle = css(c[0], c[1], c[2]);
       mg.fillRect((wx - MAPB.x0) * sx, (wz - MAPB.z0) * sz, step * sx + 1, step * sz + 1);
     }
-    mg.font = 'italic 12px Georgia';
     mg.textAlign = 'center';
+    mg.font = 'italic 10px Georgia';                          // rótulos geográficos (grises, sin punto)
+    for (const m of MAP_LABELS) {
+      const px = (m.x - MAPB.x0) * sx, pz = (m.z - MAPB.z0) * sz;
+      mg.lineWidth = 3; mg.strokeStyle = 'rgba(255,255,255,.55)'; mg.strokeText(m.n, px, pz);
+      mg.fillStyle = 'rgba(40,40,55,.85)'; mg.fillText(m.n, px, pz);
+    }
+    mg.font = 'italic 12px Georgia';
     for (const m of MARKERS) {
       const px = (m.x - MAPB.x0) * sx, pz = (m.z - MAPB.z0) * sz;
       mg.fillStyle = '#ffd86b';
