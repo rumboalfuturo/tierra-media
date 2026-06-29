@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 17;
+const GAME_VERSION = 18;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -1340,50 +1340,79 @@ function lmErebor(set, cx, cz, gy) {
   for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (dx * dx + dz * dz <= 9) set(cx + dx, gy + 1, cz + dz, B.SNOW);   // nieve en la cima
 }
 /* === MINAS TIRITH: siete niveles blancos concéntricos + espolón de roca + Torre Blanca === */
+function lmCityHouse(set, bx, bz, fy, h) {                           // casita blanca con tejado gris (llena las terrazas)
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let y = 1; y <= h; y++) { const edge = Math.abs(dx) === 1 || Math.abs(dz) === 1; set(bx + dx, fy + y, bz + dz, edge ? B.WSTONE : B.AIR); }
+  for (let dz = -1; dz <= 1; dz++) { set(bx - 1, fy + h + 1, bz + dz, B.MROCK); set(bx + 1, fy + h + 1, bz + dz, B.MROCK); set(bx, fy + h + 2, bz + dz, B.MROCK); }   // tejado a dos aguas
+  set(bx, fy + 2, bz + 1, B.GLASS); set(bx + 1, fy + 1, bz, B.DOORX);
+}
+function lmSmallTree(set, bx, bz, fy) {                              // arbolito (verdor en las terrazas)
+  for (let y = 1; y <= 3; y++) set(bx, fy + y, bz, B.LOG);
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { set(bx + dx, fy + 3, bz + dz, B.LEAVES); set(bx + dx, fy + 4, bz + dz, B.LEAVES); }
+  set(bx, fy + 5, bz, B.LEAVES);
+}
 function lmMinasTirith(set, cx, cz, gy) {
   const C = 7, R0 = 46, GROW = 5;
   const Rof = i => R0 - i * 6;                                        // 46,40,34,28,22,16,10
   const lvlAt = d => { let l = -1; for (let i = 0; i < C; i++) if (d <= Rof(i)) l = i; return l; };
+  const gateA = i => 0.3 + i * 0.8;
+  const nearGate = (a, i) => { for (const gi of [i, i + 1]) { let d = Math.abs(a - (gateA(gi) % 6.283)); if (d > 3.14) d = 6.283 - d; if (d < 0.5) return true; } return false; };
   for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) {   // pastel escalonado blanco (macizo, hasta el suelo)
     const lvl = lvlAt(Math.hypot(dx, dz)); if (lvl < 0) continue;
     const floor = gy + lvl * GROW; for (let y = Math.min(heightAt(cx + dx, cz + dz), gy); y <= floor; y++) set(cx + dx, y, cz + dz, B.WSTONE);
   }
-  for (let i = 0; i < C; i++) {                                        // muralla almenada con ventanas en el borde de cada nivel
+  for (let i = 0; i < C; i++) {                                        // muralla almenada con ventanas
     const R = Rof(i), floor = gy + i * GROW;
     for (let a = 0; a < 720; a++) { const rad = a * Math.PI / 360, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
       for (let y = floor + 1; y <= floor + 4; y++) set(cx + x, y, cz + z, B.WSTONE);
-      if ((x + z) & 1) set(cx + x, floor + 5, cz + z, B.WSTONE);      // almenas
-      if (a % 26 === 0) { set(cx + x, floor + 2, cz + z, B.GLASS); set(cx + x, floor + 3, cz + z, B.GLASS); } }   // ventanas altas
+      if ((x + z) & 1) set(cx + x, floor + 5, cz + z, B.WSTONE);
+      if (a % 26 === 0) { set(cx + x, floor + 2, cz + z, B.GLASS); set(cx + x, floor + 3, cz + z, B.GLASS); } }
+  }
+  for (let t = 0; t < 12; t++) {                                      // torres en la muralla exterior (salvo la Gran Puerta, este)
+    const a = t * Math.PI / 6; if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 0.4) continue;
+    const x = Math.round(Math.cos(a) * R0), z = Math.round(Math.sin(a) * R0), g0 = Math.min(heightAt(cx + x, cz + z), gy);
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { if (Math.hypot(dx, dz) > 2.4) continue; for (let y = g0; y <= gy + 8; y++) set(cx + x + dx, y, cz + z + dz, B.WSTONE); }
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (((dx + dz) & 1) && Math.hypot(dx, dz) <= 2.4) set(cx + x + dx, gy + 9, cz + z + dz, B.WSTONE);
+    set(cx + x, gy + 7, cz + z + 2, B.GLASS);
+  }
+  for (let i = 0; i < C - 1; i++) {                                   // casitas blancas y árboles llenando cada terraza
+    const rb = Rof(i + 1) + 2, fl = gy + i * GROW;
+    for (let a = 0; a < 6.28; a += 0.45) { if (nearGate(a, i)) continue; lmCityHouse(set, cx + Math.round(Math.cos(a) * rb), cz + Math.round(Math.sin(a) * rb), fl, 3 + (Math.round(a * 9) & 1)); }
+    for (let a = 0.3; a < 6.28; a += 1.5) { if (nearGate(a, i)) continue; lmSmallTree(set, cx + Math.round(Math.cos(a) * (Rof(i) - 2)), cz + Math.round(Math.sin(a) * (Rof(i) - 2)), fl); }
   }
   for (let i = 0; i < C; i++) {                                        // una puerta por nivel, girando (se sube rodeando)
-    const R = Rof(i), floor = gy + i * GROW, ang = 0.3 + i * 0.8;
+    const R = Rof(i), floor = gy + i * GROW, ang = gateA(i);
     for (let t = -2; t <= 2; t++) { const rad = ang + t * 0.06, x = Math.round(Math.cos(rad) * R), z = Math.round(Math.sin(rad) * R);
       for (let y = floor + 1; y <= floor + 5; y++) set(cx + x, y, cz + z, B.AIR); }
   }
   for (let dz = -2; dz <= 2; dz++) for (let y = gy + 1; y <= gy + 5; y++) { set(cx + R0, y, cz + dz, B.AIR); set(cx + R0 - 1, y, cz + dz, B.AIR); }   // Gran Puerta (este)
-  for (let dx = -6; dx <= R0; dx++) { const lvl = Math.max(0, lvlAt(Math.abs(dx))), floor = gy + lvl * GROW;   // espolón de roca (proa) al este
-    for (let dz = -1; dz <= 1; dz++) for (let y = floor + 1; y <= floor + 6; y++) set(cx + dx, y, cz + dz, B.MROCK); }
+  for (let dx = -6; dx <= R0; dx++) { const lvl = Math.max(0, lvlAt(Math.abs(dx))); if (lvl >= C - 1) continue;   // espolón de roca (proa) al este, salvo bajo la Ciudadela
+    const floor = gy + lvl * GROW; for (let dz = -1; dz <= 1; dz++) for (let y = floor + 1; y <= floor + 6; y++) set(cx + dx, y, cz + dz, B.MROCK); }
   for (let dx = R0 - 4; dx <= R0; dx++) for (let dz = -1; dz <= 1; dz++) for (let y = gy + 1; y <= gy + 5; y++) set(cx + dx, y, cz + dz, B.AIR);   // túnel bajo la proa, en la puerta
   const paveAt = (x, z, y) => { for (let w = -1; w <= 1; w++) { set(cx + x + w, y, cz + z, B.POLISHED); set(cx + x, y, cz + z + w, B.POLISHED); for (let yy = y + 1; yy <= y + 3; yy++) { set(cx + x + w, yy, cz + z, B.AIR); set(cx + x, yy, cz + z + w, B.AIR); } } };
-  { const topR = Rof(C - 1), topY = gy + (C - 1) * GROW;              // patio empedrado de la Ciudadela
-    for (let dx = -topR; dx <= topR; dx++) for (let dz = -topR; dz <= topR; dz++) if (Math.hypot(dx, dz) <= topR) set(cx + dx, topY, cz + dz, B.POLISHED); }
-  for (let i = 0; i <= C - 2; i++) {                                  // calzada que sube por las puertas (zigzag) entre terrazas
-    const r0 = Rof(i), a0 = 0.3 + i * 0.8, r1 = Rof(i + 1), a1 = 0.3 + (i + 1) * 0.8, fl = gy + i * GROW;
-    for (let s = 0; s <= 34; s++) { const t = s / 34, r = r0 + (r1 - r0) * t, a = a0 + (a1 - a0) * t; paveAt(Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r), fl); }   // tramo plano en la terraza
-    for (let s = 0; s <= GROW; s++) paveAt(Math.round(Math.cos(a1) * (r1 + 2 - s)), Math.round(Math.sin(a1) * (r1 + 2 - s)), fl + s); }   // escalera que sube por la puerta
-  for (let s = 0; s <= 14; s++) { const a = 0.3 * (1 - s / 14); paveAt(Math.round(Math.cos(a) * (R0 - 1)), Math.round(Math.sin(a) * (R0 - 1)), gy); }   // tramo final hasta la Gran Puerta
-  const tf = gy + (C - 1) * GROW, TH = 46;                            // Ciudadela: Torre de Ecthelion (hueca, esbelta, con ventanas)
-  for (let y = 1; y <= TH; y++) { const r = y < TH - 12 ? 2 : 1;      // se estrecha hacia arriba
-    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
-      const edge = Math.abs(dx) === r || Math.abs(dz) === r;
-      set(cx + dx, tf + y, cz + dz, (edge || y === 1 || y === TH) ? B.WSTONE : B.AIR); }
-    if (y > 4 && y % 5 === 0 && y < TH - 12) { set(cx + r, tf + y, cz, B.GLASS); set(cx - r, tf + y, cz, B.GLASS); set(cx, tf + y, cz + r, B.GLASS); set(cx, tf + y, cz - r, B.GLASS); } }   // ventanas en las cuatro caras
-  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if ((Math.abs(dx) === 2 || Math.abs(dz) === 2) && ((dx + dz) & 1)) set(cx + dx, tf + TH + 1, cz + dz, B.WSTONE);   // almenas
-  for (let k = 0; k <= 3; k++) { const rr = 1 + (k < 2 ? 1 : 0); for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) set(cx + dx, tf + TH + 1 + k, cz + dz, B.DBRICK); }   // chapitel de pizarra oscura
-  set(cx, tf + TH + 5, cz, B.MGLOW);                                  // baliza en la punta
-  for (let y = 1; y <= 5; y++) set(cx + 5, tf + y, cz + 3, B.WSTONE);  // Árbol Blanco
-  for (let dx = 3; dx <= 7; dx++) for (let dz = 1; dz <= 5; dz++) if (Math.hypot(dx - 5, dz - 3) <= 2.2 && ((dx + dz) & 1)) set(cx + dx, tf + 6, cz + dz, B.WSTONE);
-  for (let dx = 3; dx <= 7; dx++) for (let dz = 1; dz <= 5; dz++) if (Math.hypot(dx - 5, dz - 3) <= 1.5) set(cx + dx, tf, cz + dz, B.WATER);   // fuente
+  for (let i = 0; i <= C - 2; i++) {                                  // calzada que sube por las puertas (zigzag)
+    const r0 = Rof(i), a0 = gateA(i), r1 = Rof(i + 1), a1 = gateA(i + 1), fl = gy + i * GROW;
+    for (let s = 0; s <= 34; s++) { const t = s / 34, r = r0 + (r1 - r0) * t, a = a0 + (a1 - a0) * t; paveAt(Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r), fl); }
+    for (let s = 0; s <= GROW; s++) paveAt(Math.round(Math.cos(a1) * (r1 + 2 - s)), Math.round(Math.sin(a1) * (r1 + 2 - s)), fl + s); }
+  for (let s = 0; s <= 14; s++) { const a = 0.3 * (1 - s / 14); paveAt(Math.round(Math.cos(a) * (R0 - 1)), Math.round(Math.sin(a) * (R0 - 1)), gy); }
+  // ===== CIUDADELA: Patio de la Fuente (jardín + Árbol Blanco) + Gran Hall + Torre de Ecthelion =====
+  const tf = gy + (C - 1) * GROW;
+  for (let dx = -10; dx <= 10; dx++) for (let dz = -10; dz <= 10; dz++) { if (Math.hypot(dx, dz) > 10) continue; set(cx + dx, tf, cz + dz, dx >= 1 ? B.GRASS : B.POLISHED); }   // jardín verde al este, patio empedrado al oeste
+  for (let a = 0; a < 6.28; a += 0.22) { const x = Math.round(Math.cos(a) * 8), z = Math.round(Math.sin(a) * 8); if (x >= 2) set(cx + x, tf + 1, cz + z, B.LEAVES); }   // setos del jardín
+  for (let dx = 3; dx <= 7; dx++) for (let dz = -2; dz <= 2; dz++) { const d = Math.hypot(dx - 5, dz); if (d <= 1.6) set(cx + dx, tf, cz + dz, B.WATER); else if (d <= 2.4) set(cx + dx, tf, cz + dz, B.POLISHED); }   // fuente
+  for (let y = 1; y <= 6; y++) set(cx + 5, tf + y, cz, B.WSTONE);      // Árbol Blanco (tronco pálido)
+  for (let dx = 3; dx <= 7; dx++) for (let dz = -2; dz <= 2; dz++) if (Math.hypot(dx - 5, dz) <= 2.2 && ((dx + dz) & 1)) set(cx + dx, tf + 7, cz + dz, B.WSTONE);
+  const HX = 4, HZ = 6, hc = cx - 5;                                  // Gran Hall (oeste del patio)
+  for (let dx = -HX; dx <= HX; dx++) for (let dz = -HZ; dz <= HZ; dz++) for (let y = 1; y <= 13; y++) { const edge = Math.abs(dx) === HX || Math.abs(dz) === HZ; set(hc + dx, tf + y, cz + dz, (edge || y === 1) ? B.WSTONE : B.AIR); }
+  for (let dz = -HZ + 2; dz <= HZ - 2; dz += 3) for (let y = 5; y <= 10; y++) { set(hc + HX, tf + y, cz + dz, B.GLASS); set(hc - HX, tf + y, cz + dz, B.GLASS); }   // ventanas altas
+  for (let dz = -1; dz <= 1; dz++) for (let y = 1; y <= 5 - Math.abs(dz); y++) set(hc + HX, tf + y, cz + dz, B.AIR);   // entrada en arco hacia el jardín
+  for (let k = 0; k <= HX + 1; k++) for (let dz = -HZ - 1; dz <= HZ + 1; dz++) { set(hc - HX - 1 + k, tf + 14 + k, cz + dz, B.DBRICK); set(hc + HX + 1 - k, tf + 14 + k, cz + dz, B.DBRICK); }   // tejado gris a dos aguas
+  const TH = 48;                                                      // Torre de Ecthelion: alta, esbelta, sube del Gran Hall
+  for (let y = 1; y <= TH; y++) { const r = y < TH - 12 ? 2 : 1;
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { const edge = Math.abs(dx) === r || Math.abs(dz) === r; set(hc + dx, tf + y, cz + dz, (edge || y === 1 || y === TH) ? B.WSTONE : B.AIR); }
+    if (y > 14 && y % 5 === 0 && y < TH - 12) { set(hc + r, tf + y, cz, B.GLASS); set(hc - r, tf + y, cz, B.GLASS); set(hc, tf + y, cz + r, B.GLASS); set(hc, tf + y, cz - r, B.GLASS); } }
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if ((Math.abs(dx) === 2 || Math.abs(dz) === 2) && ((dx + dz) & 1)) set(hc + dx, tf + TH + 1, cz + dz, B.WSTONE);   // almenas
+  for (let k = 0; k <= 3; k++) { const rr = 1 + (k < 2 ? 1 : 0); for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) set(hc + dx, tf + TH + 1 + k, cz + dz, B.DBRICK); }   // chapitel de pizarra
+  set(hc, tf + TH + 5, cz, B.MGLOW);                                  // baliza
 }
 /* === EDORAS: colina solitaria con empalizada, camino en espiral y Meduseld de tejado dorado === */
 function lmEdoras(set, cx, cz, gy) {
