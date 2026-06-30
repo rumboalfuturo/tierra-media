@@ -841,8 +841,9 @@ function updateQuests(now) {
   }
   el.innerHTML = questIdx < QUESTS.length ? '📜 <b>Misión:</b> ' + QUESTS[questIdx].text : '📜 <b>¡Todas completadas!</b>';
 }
-const GROW = { pipeweed: 75000, barley: 80000, mallorn: 100000, sapling: 70000 };
+const GROW = { pipeweed: 75000, barley: 80000, mallorn: 2520000, sapling: 2520000 };   // los árboles tardan ~2 días (de juego) en crecer; los cultivos siguen rápidos
 const CROP_TYPE = { [B.PIPEWEEDY]: 'pipeweed', [B.BARLEYY]: 'barley', [B.MSPROUT]: 'mallorn', [B.SAPLING]: 'sapling' };
+const isSoil = id => id === B.GRASS || id === B.DIRT || id === B.FARMLAND;   // los árboles solo crecen en tierra, no en piedra
 
 function registerCrop(wx, wy, wz, id) {
   if (isGuest) return;            // el anfitrión lleva el reloj de crecimiento
@@ -858,8 +859,8 @@ function growCrops(now) {
     if (worldGetBlock(x, y, z) === B.AIR) continue;          // ya no está
     if (c.type === 'pipeweed') playerSetBlock(x, y, z, B.PIPEWEEDM);
     else if (c.type === 'barley') playerSetBlock(x, y, z, B.BARLEYM);
-    else if (c.type === 'mallorn') growMallorn(x, y, z);
-    else if (c.type === 'sapling') growTree(x, y, z);
+    else if (c.type === 'mallorn') { if (isSoil(worldGetBlock(x, y - 1, z))) growMallorn(x, y, z); }   // solo en tierra
+    else if (c.type === 'sapling') { if (isSoil(worldGetBlock(x, y - 1, z))) growTree(x, y, z); }      // solo en tierra
   }
 }
 // crece un árbol (roble o abedul) desde el suelo en (x,y,z) — usado por brotes y por la regeneración
@@ -5631,20 +5632,22 @@ let nextRegrow = 0;
 function regrowTrees(now) {
   if (isGuest || !inWorld || godmode) return;
   if (now < nextRegrow) return;
-  nextRegrow = now + 6000;
-  const ang = Math.random() * 6.283, r = 16 + Math.random() * 24;
+  nextRegrow = now + 180000 + Math.random() * 180000;          // un brote nuevo cada 3–6 min (luego tarda ~2 días en crecer)
+  const ang = Math.random() * 6.283, r = 22 + Math.random() * 40;
   const x = Math.round(player.x + Math.cos(ang) * r), z = Math.round(player.z + Math.sin(ang) * r);
   const b = biomeAt(x, z);
   if (b !== BIOME.SHIRE && b !== BIOME.LOTHLORIEN) return;
   let sy = -1;
   for (let y = WH - 1; y > 1; y--) { if (worldGetBlock(x, y, z) !== B.AIR) { sy = y; break; } }
-  if (sy < 0 || worldGetBlock(x, sy, z) !== B.GRASS) return;
-  if (worldGetBlock(x, sy + 1, z) !== B.AIR || worldGetBlock(x, sy + 5, z) !== B.AIR) return;   // sitio para crecer
-  for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {           // no amontonar troncos
+  if (sy < 0) return;
+  if (worldGetBlock(x, sy, z) !== B.GRASS || worldGetBlock(x, sy - 1, z) !== B.DIRT) return;   // SOLO en hierba sobre tierra natural (ni piedra ni estructuras)
+  if (worldGetBlock(x, sy + 1, z) !== B.AIR || worldGetBlock(x, sy + 6, z) !== B.AIR) return;   // hueco para crecer
+  for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) if (worldGetBlock(x + dx, sy, z + dz) !== B.GRASS) return;   // terreno llano (nada de laderas ni bordes)
+  for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {           // no amontonar árboles ni brotes
     const t = worldGetBlock(x + dx, sy + 1, z + dz);
-    if (t === B.LOG || t === B.MLOG || t === B.BIRCHLOG) return;
+    if (t === B.LOG || t === B.MLOG || t === B.BIRCHLOG || t === B.SAPLING || t === B.MSPROUT) return;
   }
-  if (b === BIOME.LOTHLORIEN) growMallorn(x, sy + 1, z); else growTree(x, sy + 1, z);
+  playerSetBlock(x, sy + 1, z, b === BIOME.LOTHLORIEN ? B.MSPROUT : B.SAPLING);   // brota un retoño que tardará días en hacerse árbol
 }
 function maybeChangeWeather(now) {
   if (isGuest) return;
