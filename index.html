@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 22;
+const GAME_VERSION = 23;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -3914,12 +3914,13 @@ function applyMobSnapshot(list) {
     if (!m) continue;
     if (e.hp < m.hp) m.hurtT = 0.22;
     m.tx = e.x; m.ty = e.y; m.tz = e.z; m.tyaw = e.yaw; m.hp = e.hp; m.mh = e.mh; m.tame = !!e.tm; m.wool = !!e.wl;
+    m.baby = !!e.bb; const s = e.bb ? 0.5 : 1; if (m.group.scale.x !== s) m.group.scale.set(s, s, s);   // crías más pequeñas
   }
   for (const id of [...mobs.keys()]) if (!seen.has(id)) removeMob(id);
 }
 function mobSnapshot() {
   const list = [];
-  for (const m of mobs.values()) list.push({ id: m.id, ty: m.type, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), yaw: +m.yaw.toFixed(2), hp: m.hp, mh: m.mh, tm: m.tame ? 1 : 0, wl: m.wool ? 1 : 0 });
+  for (const m of mobs.values()) list.push({ id: m.id, ty: m.type, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), yaw: +m.yaw.toFixed(2), hp: m.hp, mh: m.mh, tm: m.tame ? 1 : 0, wl: m.wool ? 1 : 0, bb: m.baby ? 1 : 0 });
   return list;
 }
 
@@ -3927,6 +3928,19 @@ function mobSnapshot() {
 let lastAnimalSpawn = 0;
 function updatePassive(m, dt) {
   const def = m.def;
+  if (m.baby && nowMs() > m.growAt) { m.baby = false; m.group.scale.set(1, 1, 1); }   // la cría se hace adulta
+  if (m.love) {                                                                        // emparejamiento: dos adultos enamorados cercanos → una cría
+    if (nowMs() >= m.love) m.love = 0;
+    else for (const o of mobs.values()) {
+      if (o === m || o.type !== m.type || !o.love || nowMs() >= o.love || o.baby) continue;
+      if ((o.x - m.x) ** 2 + (o.z - m.z) ** 2 > 12) continue;
+      m.love = o.love = 0; m.breedCd = o.breedCd = nowMs() + BREED_CD;
+      const baby = spawnMob(m.type, (m.x + o.x) / 2, m.y + 0.2, (m.z + o.z) / 2);
+      if (baby) { baby.baby = true; baby.growAt = nowMs() + 240000; baby.breedCd = nowMs() + BREED_CD; baby.group.scale.set(0.5, 0.5, 0.5); }
+      spawnPuffs(m.x, m.y + 0.8, m.z, '#ff5fa2', 10);
+      break;
+    }
+  }
   let mvx = 0, mvz = 0, moving = false;
   if (def.companion && m.tame) {                    // el perro domado sigue al jugador
     const dx = player.x - m.x, dz = player.z - m.z, d = Math.hypot(dx, dz) || 1;
@@ -3992,11 +4006,23 @@ function entityInCrosshair(maxDist, filter) {
   return best;
 }
 
+// qué come cada animal para criar (dáselo con clic derecho); cada especie tiene su alimento
+const BREED_FOOD = { cow: I.BARLEY_GRAIN, sheep: I.BARLEY_GRAIN, deer: I.BARLEY_GRAIN, pig: I.APPLE, chicken: I.BARLEY_SEED, fox: I.MEAT };
+const BREED_CD = 300000;                          // 5 min de espera entre crías
+function breedFeed(m) {
+  if (!isGuest && nowMs() < (m.breedCd || 0)) { toast(m.def.name + ' aún no puede criar otra vez'); return; }
+  removeInv(BREED_FOOD[m.type], 1);
+  spawnPuffs(m.x, m.y + 0.9, m.z, '#ff5fa2', 6);   // corazones
+  if (isGuest) { if (hostConn && hostConn.open) hostConn.send({ t: 'breed', id: m.id }); }
+  else m.love = nowMs() + 25000;                    // ventana de 25 s para emparejarse
+  toast(m.def.name + ' quiere criar 💕 (dale de comer a otra cerca)');
+}
 function interactAnimal(m) {
-  if (m.def.wooly) {                              // ovejas: solo se esquilan
-    if (inv[I.SHEARS] <= 0) { toast('Necesitas tijeras para cortar la lana'); return; }
-    if (!m.wool) { toast('La oveja aún no tiene lana'); return; }
-    shearAnimal(m); return;
+  const canBreed = BREED_FOOD[m.type] && inv[BREED_FOOD[m.type]] > 0 && !m.baby;
+  if (m.def.wooly) {                              // ovejas: esquilar (con tijeras) o criar (con cebada)
+    if (inv[I.SHEARS] > 0 && m.wool) { shearAnimal(m); return; }
+    if (canBreed) { breedFeed(m); return; }
+    toast(inv[I.SHEARS] > 0 ? 'La oveja aún no tiene lana' : 'Necesitas tijeras (o dale cebada para criar)'); return;
   }
   if (m.def.companion) {                          // perro: domar para que te siga
     if (m.tame) { toast('Tu perro te acompaña'); return; }
@@ -4005,12 +4031,15 @@ function interactAnimal(m) {
     else { toast('Dale grano de cebada para domar al perro'); return; }
     spawnPuffs(m.x, m.y + 0.8, m.z, '#ffd27a', 5); return;
   }
-  if (!m.def.mount) { toast('Es un animal salvaje (ataca con clic izquierdo para cazarlo)'); return; }   // vaca, cerdo, zorro, ciervo…
-  if (m.tame) { mountAnimal(m); return; }
-  if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); doTame(m, true); }
-  else if (inv[I.BARLEY_GRAIN] > 0) { removeInv(I.BARLEY_GRAIN, 1); doTame(m, false); }
-  else { toast('Necesitas grano de cebada (o una manzana de oro) para domarlo'); return; }
-  spawnPuffs(m.x, m.y + 1.0, m.z, '#ff8ab0', 5);
+  if (m.def.mount) {                              // caballo/poni/cabra: domar y montar
+    if (m.tame) { mountAnimal(m); return; }
+    if (inv[I.GOLDEN_APPLE] > 0) { removeInv(I.GOLDEN_APPLE, 1); doTame(m, true); }
+    else if (inv[I.BARLEY_GRAIN] > 0) { removeInv(I.BARLEY_GRAIN, 1); doTame(m, false); }
+    else { toast('Necesitas grano de cebada (o una manzana de oro) para domarlo'); return; }
+    spawnPuffs(m.x, m.y + 1.0, m.z, '#ff8ab0', 5); return;
+  }
+  if (canBreed) { breedFeed(m); return; }          // vaca, cerdo, zorro, ciervo, gallina: criar con su comida
+  toast('Es un animal salvaje (clic izquierdo para cazarlo · dale su comida para criar)');
 }
 function shearAnimal(m) {
   const n = 1 + ((Math.random() * 3) | 0);       // 1..3 de lana
@@ -4245,6 +4274,9 @@ function onHostData(conn, m) {
   } else if (m.t === 'shear') {
     const a = mobs.get(m.id);
     if (a && a.def.wooly && a.wool) { a.wool = false; a.woolT = nowMs() + WOOL_REGROW; }
+  } else if (m.t === 'breed') {
+    const a = mobs.get(m.id);
+    if (a && BREED_FOOD[a.type] && !a.baby && nowMs() >= (a.breedCd || 0)) a.love = nowMs() + 25000;
   } else if (m.t === 'sleep') {
     if (isNight()) { dayT = 0.02; broadcast({ t: 'day', dayT }); }
   } else if (m.t === 'mount') {
@@ -5024,7 +5056,7 @@ const HELP_KB = [
   { k:['caballo','montar','montura','horse','rohan','cabalgar'], a:'Acércate a un <b>caballo</b> y dale de comer con clic derecho (<b>grano de cebada</b> ×4, o una <b>manzana de oro</b> al instante). Cuando esté domado, clic derecho para montarlo. <b>F</b> para bajar.' },
   { k:['cabra','goat','montana','escalar','trepar'], a:'La <b>cabra de Erebor</b> (en las montañas) <b>trepa</b> laderas y no sufre daño por caídas. Dómala con grano y móntala con clic derecho.' },
   { k:['poni','pony','alforja','alforjas'], a:'El <b>poni</b> lleva <b>alforjas</b>: móntalo y pulsa <b>E</b> para guardar materiales en su bolsa.' },
-  { k:['animal','animales','vaca','cerdo','gallina','ciervo','zorro','pez','peces','pajaro','perro','carne','cazar'], a:'Por el mundo hay <b>vacas, cerdos, gallinas, ciervos y zorros</b> (ataca con clic izquierdo para cazarlos: sueltan <b>carne</b> que puedes comer), <b>peces</b> en el agua, <b>pájaros</b> en el cielo y <b>perros</b>: dale <b>grano de cebada</b> a un perro (clic derecho) para domarlo y que te siga.' },
+  { k:['animal','animales','vaca','cerdo','gallina','ciervo','zorro','pez','peces','pajaro','perro','carne','cazar','criar','cria','reproduccion','reproducir','bebe','granja'], a:'Por el mundo hay <b>vacas, cerdos, gallinas, ciervos y zorros</b> (clic izquierdo para cazarlos: sueltan <b>carne</b>), <b>peces</b>, <b>pájaros</b> y <b>perros</b> (dale <b>grano de cebada</b> con clic derecho para domar al perro). <b>CRÍA:</b> da de comer (clic derecho) a DOS animales de la misma especie que estén cerca y tendrán una <b>cría</b> que crece con el tiempo. Cada uno come lo suyo: <b>vaca/oveja/ciervo → grano de cebada</b>, <b>cerdo → manzana</b>, <b>gallina → semillas de cebada</b>, <b>zorro → carne</b>. Hay que esperar unos minutos entre crías.' },
   { k:['cultivo','sembrar','plantar','farm','galenas','cebada','semilla','semillas','arar','huerto','agricultura'], a:'Labra la tierra con la <b>pala</b> (clic derecho sobre hierba), siembra <b>semillas</b> de galenas o cebada con clic derecho y espera a que crezcan. Las semillas salen de romper hierba.' },
   { k:['pipa','pipe','fumar'], a:'Fabrica una <b>pipa</b> con 4 tablones. Fúmala (con hierba para pipa) desde el inventario para recuperarte más rápido.' },
   { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
