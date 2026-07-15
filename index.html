@@ -398,7 +398,7 @@ window.addEventListener('error', e => {
 ============================================================ */
 // versión del motor: si anfitrión e invitado no coinciden, el mundo no encaja (generación distinta).
 // Súbela cuando cambie la generación del terreno o el formato de red.
-const GAME_VERSION = 23;
+const GAME_VERSION = 24;
 let SEED = 1337;            // semilla del mundo cargado
 const CH = 16;              // tamaño de chunk en XZ
 const WH = 320;             // altura del mundo (~200 niveles de mina debajo + ~116 de aire para monumentos altos)
@@ -505,6 +505,8 @@ const B = {
   DOORXO2:70, DOORZO2:71,   // segunda hoja de puerta: abre hacia el otro lado (puertas dobles al centro)
   SAPLING:72,               // brote plantado que crece hasta ser árbol
   WITCHGLOW:73,             // luz verde fantasmal (Minas Morgul)
+  SLUICE:74, SLUICEO:75,    // compuerta de agua: cerrada corta el flujo, abierta lo deja pasar (clic derecho)
+  MILLWHEEL:76,             // rueda de molino: gira junto al agua
 };
 const isLadder = id => id === B.LADDER || id === B.LADDERS;
 const isDoorId = id => (id >= B.DOORX && id <= B.DOORZO) || id === B.DOORXO2 || id === B.DOORZO2;
@@ -513,7 +515,8 @@ const isOpenDoor = id => id === B.DOORXO || id === B.DOORZO || id === B.DOORXO2 
 const SMELT = { [B.IRONORE]:'iron', [B.GOLDORE]:'gold', [B.SILVERORE]:'silver', [B.BIRONORE]:'biron', [B.MITHRIL]:'mithril' };
 // plantas finas (se atraviesan, se rompen de un golpe, se dibujan como aspas)
 const PLANTS = new Set([B.PIPEWEEDY, B.PIPEWEEDM, B.BARLEYY, B.BARLEYM, B.ATHELAS, B.MSPROUT,
-                        B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.BERRYBUSH, B.CACTUS, B.SAPLING]);
+                        B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.BERRYBUSH, B.CACTUS, B.SAPLING,
+                        B.MILLWHEEL]);   // la rueda de molino se dibuja como aspas (la anima updateMillWheels)
 const isPlant = id => PLANTS.has(id);
 
 // objetos del inventario que no son bloques (ids ≥ 200)
@@ -568,6 +571,7 @@ const NAMES = {
   [B.DIAMOND_BLOCK]:'Bloque de diamante',
   [B.STONEBRICK]:'Ladrillo de piedra', [B.POLISHED]:'Piedra pulida', [B.GLASS]:'Cristal', [B.FURNACE]:'Horno',
   [B.DOORXO2]:'Puerta de madera', [B.DOORZO2]:'Puerta de madera', [B.SAPLING]:'Brote de árbol', [B.WITCHGLOW]:'Luz de Morgul',
+  [B.SLUICE]:'Compuerta de agua', [B.SLUICEO]:'Compuerta de agua (abierta)', [B.MILLWHEEL]:'Rueda de molino',
   [I.APPLE]:'Manzana', [I.BERRIES]:'Bayas del bosque', [I.DIAMOND]:'Diamante', [I.MEAT]:'Carne asada',
   [I.SAPLING]:'Semilla de árbol', [I.CHISEL]:'Cincel',
   [I.PIPE_LEAF]:'Hierba para pipa', [I.BARLEY_GRAIN]:'Grano de cebada',
@@ -602,12 +606,12 @@ const MATERIALS = [B.DIRT, B.COBBLE, B.WSTONE, B.SAND, B.SNOW, B.LOG, B.MLOG, B.
                    B.BIRCHLOG, B.PINELEAVES, B.BIRCHLEAVES, B.APPLELEAVES, B.PALMLEAVES,
                    B.FLOWER_R, B.FLOWER_Y, B.MUSH_RED, B.MUSH_BROWN, B.CACTUS,
                    B.DEEPSTONE, B.HARDROCK, B.DIAMOND_BLOCK,
-                   B.STONEBRICK, B.POLISHED, B.GLASS, B.FURNACE, B.STONE];
+                   B.STONEBRICK, B.POLISHED, B.GLASS, B.FURNACE, B.STONE, B.SLUICE, B.MILLWHEEL];
 // qué suelta cada bloque al romperse (por defecto, él mismo)
 const DROPS = { [B.GRASS]: B.DIRT, [B.STONE]: B.COBBLE, [B.FIRE]: 0,
                 [B.DOORZ]: B.DOORX, [B.DOORXO]: B.DOORX, [B.DOORZO]: B.DOORX, [B.DOORXO2]: B.DOORX, [B.DOORZO2]: B.DOORX,
                 [B.STONE]: B.COBBLE,
-                [B.FARMLAND]: B.DIRT, [B.MGLOW]: B.MLEAVES, [B.DIAMOND_ORE]: I.DIAMOND };
+                [B.FARMLAND]: B.DIRT, [B.MGLOW]: B.MLEAVES, [B.DIAMOND_ORE]: I.DIAMOND, [B.SLUICEO]: B.SLUICE };
 // roca que solo cede ante un pico de cierto nivel de metal
 const PICK_REQ = { [B.DEEPSTONE]: 'iron', [B.HARDROCK]: 'steel', [B.DIAMOND_ORE]: 'iron' };
 const TIER_ORD = { none: -1, base: 0, iron: 1, steel: 2, silver: 1, blackiron: 2, mithril: 3, diamond: 4 };
@@ -812,6 +816,7 @@ const nowMs = () => performance.now();
 const crops = new Map();        // "x,y,z" -> { type, t }   t = performance.now() al plantar
 const barrelCool = new Map();   // "x,y,z" -> último uso del barril
 const torches = new Set();      // "x,y,z" de antorchas (para que no aparezcan enemigos cerca)
+const mills = new Set();        // "x,y,z" de ruedas de molino (updateMillWheels les pone la rueda que gira)
 
 /* ----- misiones que guían al jugador ----- */
 const questFlags = { slept: false, torchPlaced: false, chestUsed: false, caveExplored: false };
@@ -906,6 +911,7 @@ function playerSetBlock(wx, wy, wz, id) {
   if (prev === B.CHEST && id !== B.CHEST && chests.has(k)) { chests.delete(k); broadcastChest(k, null); }
   if (CROP_TYPE[prev] && id !== prev) crops.delete(k);
   if (id === B.TORCH) torches.add(k); else if (prev === B.TORCH) torches.delete(k);
+  if (id === B.MILLWHEEL) mills.add(k); else if (prev === B.MILLWHEEL) mills.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
   if (CROP_TYPE[id]) registerCrop(wx, wy, wz, id);
@@ -924,6 +930,7 @@ function netApplySet(wx, wy, wz, id) {
   if (prev === B.CHEST && id !== B.CHEST) chests.delete(k);
   if (CROP_TYPE[prev] && id !== prev) crops.delete(k);
   if (id === B.TORCH) torches.add(k); else if (prev === B.TORCH) torches.delete(k);
+  if (id === B.MILLWHEEL) mills.add(k); else if (prev === B.MILLWHEEL) mills.delete(k);
   recordEdit(wx, wy, wz, id);
   setBlockRaw(wx, wy, wz, id);
   if (isHost) { registerCrop(wx, wy, wz, id); saveDirty = true; queueReactAround(wx, wy, wz); scheduleFluidAround(wx, wy, wz); }
@@ -1069,7 +1076,11 @@ function updateFluidCell(x, y, z) {
       let minH = 99;
       if (!fedAbove) for (const [dx, dz] of HORIZ) {
         const nx = x + dx, nz = z + dz;
-        if (worldGetBlock(nx, y, nz) === id) { const nk = nx + ',' + y + ',' + nz; const nl = fluidLvl.has(nk) ? fluidLvl.get(nk) : 0; if (nl < minH) minH = nl; }
+        const nb = worldGetBlock(nx, y, nz);
+        if (nb === id) { const nk = nx + ',' + y + ',' + nz; const nl = fluidLvl.has(nk) ? fluidLvl.get(nk) : 0; if (nl < minH) minH = nl; }
+        else if (nb === B.SLUICEO && worldGetBlock(nx + dx, y, nz + dz) === id) {   // alimentado a través de una compuerta abierta (+1 de nivel)
+          const fk = (nx + dx) + ',' + y + ',' + (nz + dz); const fl = (fluidLvl.has(fk) ? fluidLvl.get(fk) : 0) + 1; if (fl < minH) minH = fl;
+        }
       }
       const newL = fedAbove ? 1 : (minH + 1);
       if (newL > maxL) { fluidSet(x, y, z, B.AIR, 0); return; }     // sin apoyo → se seca
@@ -1080,13 +1091,19 @@ function updateFluidCell(x, y, z) {
       curL = newL;
     }
     if (worldGetBlock(x, y - 1, z) === B.AIR) { fluidSet(x, y - 1, z, id, 1); return; }   // cae
+    if (worldGetBlock(x, y - 1, z) === B.SLUICEO && worldGetBlock(x, y - 2, z) === B.AIR) { fluidSet(x, y - 2, z, id, 1); return; }   // cae a través de compuerta abierta
     // sobre suelo sólido se extiende formando charco (agua y lava igual); el nivel crece hasta MAX y se detiene
     const spreadLvl = isSrc ? 1 : curL + 1;
-    if (spreadLvl <= maxL) for (const [dx, dz] of HORIZ)
-      if (worldGetBlock(x + dx, y, z + dz) === B.AIR) fluidSet(x + dx, y, z + dz, id, spreadLvl);
+    if (spreadLvl <= maxL) for (const [dx, dz] of HORIZ) {
+      const tb = worldGetBlock(x + dx, y, z + dz);
+      if (tb === B.AIR) fluidSet(x + dx, y, z + dz, id, spreadLvl);
+      else if (tb === B.SLUICEO && spreadLvl + 1 <= maxL && worldGetBlock(x + dx * 2, y, z + dz * 2) === B.AIR)   // atraviesa la compuerta abierta
+        fluidSet(x + dx * 2, y, z + dz * 2, id, spreadLvl + 1);
+    }
   } else if (id === B.AIR) {                            // un hueco: ¿entra fluido de un vecino?
     const above = worldGetBlock(x, y + 1, z);
     if (above === B.WATER || above === B.LAVA) { fluidSet(x, y, z, above, 1); return; }   // cae dentro
+    if (above === B.SLUICEO) { const a2 = worldGetBlock(x, y + 2, z); if (a2 === B.WATER || a2 === B.LAVA) { fluidSet(x, y, z, a2, 1); return; } }   // cae por la compuerta abierta
     for (const [dx, dz] of HORIZ) {
       const nid = worldGetBlock(x + dx, y, z + dz);
       if (nid !== B.WATER && nid !== B.LAVA) continue;
@@ -2458,6 +2475,19 @@ const TILE_PAINTERS = [
     speckle(ox, oy, [70, 150, 86], 0.14, rng);
     for (let i = 0; i < 16; i++) px(ox, oy, (rng() * 16) | 0, (rng() * 16) | 0, 150, 255, 150);
   },
+  /* 74 compuerta */ (ox, oy, rng) => {                      // rejilla de hierro sobre marco de madera
+    speckle(ox, oy, [116, 88, 52], 0.1, rng);
+    actx.fillStyle = css(74, 76, 84);
+    for (let i = 2; i < T; i += 4) { actx.fillRect(ox + i, oy + 1, 2, T - 2); actx.fillRect(ox + 1, oy + i, T - 2, 2); }
+    actx.fillStyle = css(52, 54, 60); actx.fillRect(ox, oy, T, 1); actx.fillRect(ox, oy + T - 1, T, 1);
+  },
+  /* 75 rueda de molino (fondo transparente) */ (ox, oy, rng) => {
+    actx.strokeStyle = css(110, 78, 44); actx.lineWidth = 2;
+    actx.beginPath(); actx.arc(ox + 8, oy + 8, 6, 0, 7); actx.stroke();     // aro
+    actx.beginPath(); actx.moveTo(ox + 2, oy + 8); actx.lineTo(ox + 14, oy + 8);
+    actx.moveTo(ox + 8, oy + 2); actx.lineTo(ox + 8, oy + 14); actx.stroke();   // radios
+    px(ox, oy, 8, 8, 70, 48, 26); px(ox, oy, 7, 8, 70, 48, 26); px(ox, oy, 8, 7, 70, 48, 26);
+  },
 ];
 TILE_PAINTERS.forEach((paint, i) => {
   paint((i % ACOLS) * T, ((i / ACOLS) | 0) * T, makeRng(1000 + i * 77));
@@ -2537,6 +2567,9 @@ const TILE_MAP = {
   [B.DOORZO2]:     { all: 23 },
   [B.SAPLING]:     { all: 72 },
   [B.WITCHGLOW]:   { all: 73 },
+  [B.SLUICE]:      { all: 74 },
+  [B.SLUICEO]:     { all: 74 },
+  [B.MILLWHEEL]:   { all: 75 },
 };
 function tileFor(id, faceIdx) {
   const t = TILE_MAP[id];
@@ -2603,6 +2636,48 @@ function updateTorchLights(now) {
     const L = torchLights[i], t = near[i];
     if (t) { L.position.set(t.x + 0.5, t.y + 0.55, t.z + 0.5); L.intensity = 22; L.visible = true; }
     else { L.intensity = 0; L.visible = false; }
+  }
+}
+
+// ruedas de molino: malla 3D que gira si tiene agua al lado (el bloque en sí es solo el ancla)
+const millMeshes = new Map();   // "x,y,z" -> { group, wheel, axis, spin }
+function buildMillMesh(x, y, z) {
+  const wood = new THREE.MeshLambertMaterial({ color: 0x7a5a34 });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x5a4226 });
+  // eje según la pared: si hay bloque sólido a ±x, el eje va en X (la rueda gira en el plano YZ)
+  const axis = (isSolid(worldGetBlock(x + 1, y, z)) || isSolid(worldGetBlock(x - 1, y, z))) ? 'x' : 'z';
+  const group = new THREE.Group();
+  const wheel = new THREE.Group();
+  const axleGeo = new THREE.BoxGeometry(axis === 'x' ? 1.0 : 0.16, 0.16, axis === 'x' ? 0.16 : 1.0);
+  group.add(new THREE.Mesh(axleGeo, dark));
+  for (let i = 0; i < 4; i++) {                                       // 4 palas cruzadas
+    const p = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? 0.1 : 0.24, 1.7, axis === 'x' ? 0.24 : 0.1), wood);
+    if (axis === 'x') p.rotation.x = i * Math.PI / 4; else p.rotation.z = i * Math.PI / 4;
+    wheel.add(p);
+  }
+  group.add(wheel);
+  group.position.set(x + 0.5, y + 0.5, z + 0.5);
+  scene.add(group);
+  return { group, wheel, axis, spin: 0 };
+}
+function updateMillWheels(dt) {
+  if (!inWorld) return;
+  for (const key of mills) {
+    if (millMeshes.has(key)) continue;
+    const [x, y, z] = key.split(',').map(Number);
+    if ((x - player.x) ** 2 + (z - player.z) ** 2 > 80 * 80) continue;
+    millMeshes.set(key, buildMillMesh(x, y, z));
+  }
+  for (const [key, m] of millMeshes) {
+    const [x, y, z] = key.split(',').map(Number);
+    if (!mills.has(key) || (x - player.x) ** 2 + (z - player.z) ** 2 > 90 * 90) {   // quitada o lejos
+      m.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); });
+      scene.remove(m.group); millMeshes.delete(key); continue;
+    }
+    let wet = false;                                                  // ¿agua tocando la rueda?
+    for (const [dx, dy, dz] of [[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],[0,-1,0],[0,-2,0]])
+      if (worldGetBlock(x + dx, y + dy, z + dz) === B.WATER) { wet = true; break; }
+    if (wet) { m.spin += dt * 1.6; if (m.axis === 'x') m.wheel.rotation.x = m.spin; else m.wheel.rotation.z = m.spin; }
   }
 }
 
@@ -2813,6 +2888,8 @@ function resetWorld() {
   reactQueue.length = 0; fluidQ.length = 0; fluidLvl.clear(); fluidPending.clear(); fluidChg.clear(); fluidBurstStart = 0;
   crops.clear(); barrelCool.clear(); torches.clear();
   clearDrops(); clearParticles(); clearMobs();
+  for (const [k, m] of millMeshes) { m.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); }); scene.remove(m.group); }
+  millMeshes.clear(); mills.clear();
   if (mountMesh) { scene.remove(mountMesh); mountMesh = null; }
   player.mount = null; chests.delete('@bag');
   if (boatMesh) { scene.remove(boatMesh); boatMesh = null; }
@@ -3286,6 +3363,15 @@ function tryPlace(initial) {
   const hit = raycast(6, { fire: false });
   if (!hit) return;
   if (isDoorId(hit.id)) { if (initial) toggleDoor(hit.x, hit.y, hit.z); return; }
+  if (hit.id === B.SLUICE || hit.id === B.SLUICEO) {                  // compuerta: abrir/cerrar el paso del agua
+    if (initial) {
+      const open = hit.id === B.SLUICE;
+      playerSetBlock(hit.x, hit.y, hit.z, open ? B.SLUICEO : B.SLUICE);
+      scheduleFluidAround(hit.x, hit.y, hit.z);
+      toast(open ? 'Compuerta ABIERTA — el agua pasa' : 'Compuerta CERRADA — el agua se corta');
+    }
+    return;
+  }
   if (hit.id === B.CHEST) { if (initial) openChest(hit.x + ',' + hit.y + ',' + hit.z); return; }
   if (hit.id === B.FORGE) { if (initial) openForge(); return; }
   if (hit.id === B.FURNACE) { if (initial) openFurnace(); return; }
@@ -4519,10 +4605,12 @@ function startWorld(meta, data, mode) {
   questFlags.caveExplored = !!data?.quest?.flags?.caveExplored;
   questT = 0;
   creative = !!data?.creative; updateCreativeBtn();
-  // reconstruir las antorchas guardadas (para el anti-aparición)
-  torches.clear();
+  // reconstruir las antorchas y ruedas de molino guardadas
+  torches.clear(); mills.clear();
   for (const [ck, m] of editsByChunk) { const [cx, cz] = ck.split(',').map(Number);
-    for (const [lk, bid] of m) if (bid === B.TORCH) { const [lx, ly, lz] = lk.split(',').map(Number); torches.add((cx * 16 + lx) + ',' + ly + ',' + (cz * 16 + lz)); } }
+    for (const [lk, bid] of m) { if (bid !== B.TORCH && bid !== B.MILLWHEEL) continue;
+      const [lx, ly, lz] = lk.split(',').map(Number); const wk = (cx * 16 + lx) + ',' + ly + ',' + (cz * 16 + lz);
+      if (bid === B.TORCH) torches.add(wk); else mills.add(wk); } }
 
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) genChunk(dx, dz);
 
@@ -5070,6 +5158,7 @@ const HELP_KB = [
   { k:['poni','pony','alforja','alforjas'], a:'El <b>poni</b> lleva <b>alforjas</b>: móntalo y pulsa <b>E</b> para guardar materiales en su bolsa.' },
   { k:['animal','animales','vaca','cerdo','gallina','ciervo','zorro','pez','peces','pajaro','perro','carne','cazar','criar','cria','reproduccion','reproducir','bebe','granja'], a:'Por el mundo hay <b>vacas, cerdos, gallinas, ciervos y zorros</b> (clic izquierdo para cazarlos: sueltan <b>carne</b>), <b>peces</b>, <b>pájaros</b> y <b>perros</b> (dale <b>grano de cebada</b> con clic derecho para domar al perro). <b>CRÍA:</b> da de comer (clic derecho) a DOS animales de la misma especie que estén cerca y tendrán una <b>cría</b> que crece con el tiempo. Cada uno come lo suyo: <b>vaca/oveja/ciervo → grano de cebada</b>, <b>cerdo → manzana</b>, <b>gallina → semillas de cebada</b>, <b>zorro → carne</b>. Hay que esperar unos minutos entre crías.' },
   { k:['cultivo','sembrar','plantar','farm','galenas','cebada','semilla','semillas','arar','huerto','agricultura','riego','regar','canal','agua'], a:'Labra la tierra con la <b>pala</b> (clic derecho sobre hierba) y siembra <b>semillas</b> con clic derecho. <b>RIEGO:</b> el cultivo solo madura con <b>agua a 4 bloques o menos</b> (cava un canal desde un río o coloca agua con el <b>cubo</b>) — o cuando <b>llueve</b>. Las semillas salen de romper hierba.' },
+  { k:['compuerta','esclusa','presa','molino','rueda','dique','hidraulica'], a:'En la <b>forja</b> puedes fabricar: la <b>compuerta de agua</b> (colócala en un canal; <b>clic derecho</b> la abre/cierra — cerrada corta el agua, abierta la deja pasar: perfecta para <b>presas</b> y riego a demanda) y la <b>rueda de molino</b> (colócala pegada a una pared junto al agua y <b>girará</b> sola).' },
   { k:['pipa','pipe','fumar'], a:'Fabrica una <b>pipa</b> con 4 tablones. Fúmala (con hierba para pipa) desde el inventario para recuperarte más rápido.' },
   { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
   { k:['cofre','chest','almacen','guardar'], a:'Fabrica un <b>cofre</b> con 8 tablones. Colócalo y clic derecho para guardar materiales. ¡Cuidado, la madera arde!' },
@@ -5296,6 +5385,8 @@ function renderForge() {
     { label: 'Espada de mithril (2 mithril)',      need: [[I.MITHRIL_INGOT, 2]],out: () => forgeWeapon(I.SW_MITHRIL) },
     { label: 'Tijeras (2 hierro) — para esquilar ovejas y cabras', need: [[I.IRON_INGOT, 2]], out: () => { addInv(I.SHEARS, 1); toast('Has fabricado unas tijeras'); } },
     { label: 'Cincel (3 hierro) — para pulir y labrar la piedra', need: [[I.IRON_INGOT, 3]], out: () => { addInv(I.CHISEL, 1); toast('Has fabricado un cincel'); } },
+    { label: 'Compuerta de agua (2 hierro + 2 tablas) — corta o deja pasar el agua (clic derecho)', need: [[I.IRON_INGOT, 2], [B.PLANK, 2]], out: () => { addInv(B.SLUICE, 1); toast('Compuerta lista: colócala en un canal y ábrela/ciérrala con clic derecho'); } },
+    { label: 'Rueda de molino (4 tablas + 1 hierro) — gira junto al agua', need: [[B.PLANK, 4], [I.IRON_INGOT, 1]], out: () => { addInv(B.MILLWHEEL, 1); toast('Rueda de molino lista: colócala pegada al agua'); } },
   ].forEach(r => addRecipe(fb, r));
   $('gearline').textContent = gearText();
 }
@@ -5796,6 +5887,7 @@ function step(now) {
     updateMobs(dt, now);
     updateRain(dt);
     updateTorchLights(now);
+    updateMillWheels(dt);
     if (player.mount && mountMesh) { mountMesh.position.set(player.x, player.y, player.z); mountMesh.rotation.y = yaw; }
     if (player.boat && boatMesh) { boatMesh.position.set(player.x, player.y - 0.3, player.z); boatMesh.rotation.y = yaw; }
     updateDrops(dt, now);
