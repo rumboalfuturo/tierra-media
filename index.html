@@ -850,11 +850,21 @@ function registerCrop(wx, wy, wz, id) {
   const type = CROP_TYPE[id];
   if (type) crops.set(wx + ',' + wy + ',' + wz, { type, t: nowMs() });
 }
+// riego: la tierra arada está regada si hay agua a ≤4 bloques (a su altura o justo debajo), o si llueve
+function isIrrigated(x, y, z) {
+  if (weather === 'rain') return true;
+  for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = -1; dy <= 0; dy++) {
+    const b = worldGetBlock(x + dx, y - 1 + dy, z + dz);
+    if (b === B.WATER) return true;
+  }
+  return false;
+}
 function growCrops(now) {
   if (isGuest) return;
   for (const [k, c] of crops) {
     if (now - c.t < GROW[c.type]) continue;
     const [x, y, z] = k.split(',').map(Number);
+    if ((c.type === 'pipeweed' || c.type === 'barley') && !isIrrigated(x, y, z)) { c.t = now - GROW[c.type] + 5000; continue; }   // sin riego se queda a punto de madurar; re-mira cada 5 s por si llega agua o lluvia
     crops.delete(k);
     if (worldGetBlock(x, y, z) === B.AIR) continue;          // ya no está
     if (c.type === 'pipeweed') playerSetBlock(x, y, z, B.PIPEWEEDM);
@@ -3309,7 +3319,9 @@ function tryPlace(initial) {
     if (worldGetBlock(hit.x, hit.y + 1, hit.z) !== B.AIR) return;
     if (!creative) removeInv(mat, 1);
     playerSetBlock(hit.x, hit.y + 1, hit.z, seed.plant);
-    if (initial) toast('Plantado — dale tiempo para crecer');
+    if (initial) toast(seed.on === 'farm' && !isIrrigated(hit.x, hit.y + 1, hit.z)
+      ? 'Plantado… pero SIN RIEGO no madurará: acerca agua a 4 bloques (cava un canal) o espera lluvia'
+      : 'Plantado — dale tiempo para crecer');
     return;
   }
 
@@ -5057,7 +5069,7 @@ const HELP_KB = [
   { k:['cabra','goat','montana','escalar','trepar'], a:'La <b>cabra de Erebor</b> (en las montañas) <b>trepa</b> laderas y no sufre daño por caídas. Dómala con grano y móntala con clic derecho.' },
   { k:['poni','pony','alforja','alforjas'], a:'El <b>poni</b> lleva <b>alforjas</b>: móntalo y pulsa <b>E</b> para guardar materiales en su bolsa.' },
   { k:['animal','animales','vaca','cerdo','gallina','ciervo','zorro','pez','peces','pajaro','perro','carne','cazar','criar','cria','reproduccion','reproducir','bebe','granja'], a:'Por el mundo hay <b>vacas, cerdos, gallinas, ciervos y zorros</b> (clic izquierdo para cazarlos: sueltan <b>carne</b>), <b>peces</b>, <b>pájaros</b> y <b>perros</b> (dale <b>grano de cebada</b> con clic derecho para domar al perro). <b>CRÍA:</b> da de comer (clic derecho) a DOS animales de la misma especie que estén cerca y tendrán una <b>cría</b> que crece con el tiempo. Cada uno come lo suyo: <b>vaca/oveja/ciervo → grano de cebada</b>, <b>cerdo → manzana</b>, <b>gallina → semillas de cebada</b>, <b>zorro → carne</b>. Hay que esperar unos minutos entre crías.' },
-  { k:['cultivo','sembrar','plantar','farm','galenas','cebada','semilla','semillas','arar','huerto','agricultura'], a:'Labra la tierra con la <b>pala</b> (clic derecho sobre hierba), siembra <b>semillas</b> de galenas o cebada con clic derecho y espera a que crezcan. Las semillas salen de romper hierba.' },
+  { k:['cultivo','sembrar','plantar','farm','galenas','cebada','semilla','semillas','arar','huerto','agricultura','riego','regar','canal','agua'], a:'Labra la tierra con la <b>pala</b> (clic derecho sobre hierba) y siembra <b>semillas</b> con clic derecho. <b>RIEGO:</b> el cultivo solo madura con <b>agua a 4 bloques o menos</b> (cava un canal desde un río o coloca agua con el <b>cubo</b>) — o cuando <b>llueve</b>. Las semillas salen de romper hierba.' },
   { k:['pipa','pipe','fumar'], a:'Fabrica una <b>pipa</b> con 4 tablones. Fúmala (con hierba para pipa) desde el inventario para recuperarte más rápido.' },
   { k:['cerveza','barril','beer','fuerza','taberna'], a:'Con <b>cebada</b> y tablones haces un <b>barril</b>; colócalo y clic derecho para servir cerveza, que te da <b>fuerza</b> (picas y corres más).' },
   { k:['cofre','chest','almacen','guardar'], a:'Fabrica un <b>cofre</b> con 8 tablones. Colócalo y clic derecho para guardar materiales. ¡Cuidado, la madera arde!' },
