@@ -3750,6 +3750,50 @@ function createMobMesh(type) {
     if (def.horns) { const hornGeo = new THREE.BoxGeometry(0.07 * sc, 0.28 * sc, 0.07 * sc);
       const hm2 = new THREE.MeshLambertMaterial({ color: 0x4a3a28 }); mats.push(hm2);
       for (const s of [-1, 1]) { const horn = new THREE.Mesh(hornGeo, hm2); horn.position.set(s * 0.08 * sc, 1.5 * sc, -0.78 * sc); horn.rotation.x = 0.5; g.add(horn); } }
+    // --- detalles por especie, para que cada animal se reconozca de un vistazo ---
+    const mk = (w, h, d, color, x, y, z, rx, rz) => {
+      const mat = new THREE.MeshLambertMaterial({ color }); mats.push(mat);
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w * sc, h * sc, d * sc), mat);
+      mesh.position.set(x * sc, y * sc, z * sc); if (rx) mesh.rotation.x = rx; if (rz) mesh.rotation.z = rz;
+      g.add(mesh); return mesh;
+    };
+    if (type === 'cow') {
+      mk(0.04, 0.3, 0.34, 0xe8e4da, 0.26, 0.9, -0.18);      // manchas blancas
+      mk(0.04, 0.26, 0.3, 0xe8e4da, -0.26, 0.82, 0.22);
+      mk(0.3, 0.04, 0.34, 0xe8e4da, 0.05, 1.14, 0.15);
+      mk(0.24, 0.12, 0.28, 0xe8b0b8, 0, 0.52, 0.28);        // ubre
+      mk(0.14, 0.08, 0.05, 0xd8a0a8, 0, 1.24, -1.05);       // morro rosado
+    } else if (type === 'sheep') {
+      const wm = new THREE.MeshLambertMaterial({ color: 0xf4f1e8 }); mats.push(wm);
+      const wool = new THREE.Group();
+      const wb = new THREE.Mesh(new THREE.BoxGeometry(0.64 * sc, 0.68 * sc, 1.2 * sc), wm); wb.position.y = 0.86 * sc; wool.add(wb);
+      const wh2 = new THREE.Mesh(new THREE.BoxGeometry(0.34 * sc, 0.22 * sc, 0.34 * sc), wm); wh2.position.set(0, 1.5 * sc, -0.78 * sc); wool.add(wh2);
+      g.add(wool); limbs.wool = wool;                        // el abrigo de lana desaparece al esquilar
+    } else if (type === 'pig') {
+      mk(0.16, 0.12, 0.05, 0xf2c0c4, 0, 1.28, -1.07);       // hocico chato
+      mk(0.06, 0.06, 0.14, 0xe2a0a0, 0.05, 1.05, 0.72, -0.9); // rabo enroscado
+    } else if (type === 'fox') {
+      mk(0.15, 0.15, 0.5, 0xc8662a, 0, 1.05, 0.8, -0.35);   // cola tupida
+      mk(0.16, 0.16, 0.14, 0xf0ede4, 0, 1.18, 1.0);         // punta blanca de la cola
+      mk(0.06, 0.16, 0.05, 0x8a4418, 0.1, 1.58, -0.7);      // orejas puntiagudas
+      mk(0.06, 0.16, 0.05, 0x8a4418, -0.1, 1.58, -0.7);
+      mk(0.22, 0.2, 0.05, 0xf0ede4, 0, 0.98, -0.66);        // pecho blanco
+    } else if (type === 'deer') {
+      mk(0.05, 0.34, 0.05, 0x6a5236, 0.1, 1.68, -0.76, 0, 0.3);    // cornamenta
+      mk(0.05, 0.34, 0.05, 0x6a5236, -0.1, 1.68, -0.76, 0, -0.3);
+      mk(0.05, 0.2, 0.05, 0x6a5236, 0.2, 1.78, -0.73, 0, 0.9);
+      mk(0.05, 0.2, 0.05, 0x6a5236, -0.2, 1.78, -0.73, 0, -0.9);
+      mk(0.16, 0.16, 0.05, 0xf0ede4, 0, 0.96, 0.69);        // rabo blanco
+    } else if (type === 'dog') {
+      mk(0.08, 0.16, 0.05, 0x6a5540, 0.13, 1.42, -0.68, 0, 0.5);   // orejas caídas
+      mk(0.08, 0.16, 0.05, 0x6a5540, -0.13, 1.42, -0.68, 0, -0.5);
+      mk(0.3, 0.06, 0.3, 0xc03a3a, 0, 1.18, -0.55);         // collar rojo
+    } else if (type === 'horse' || type === 'pony') {
+      mk(0.1, 0.42, 0.12, 0x3a2e20, 0, 1.36, -0.44, -0.4);  // crin
+      mk(0.1, 0.34, 0.26, 0x3a2e20, 0, 0.95, 0.72, -0.4);   // cola oscura
+    } else if (type === 'goat') {
+      mk(0.07, 0.14, 0.05, 0xdcd4c4, 0, 1.14, -0.97);       // barbita
+    }
     return { group: g, mats, limbs };
   }
   if (def.shape === 'fowl') {                          // gallina: cuerpo pequeño, dos patas, pico y cresta
@@ -3760,6 +3804,10 @@ function createMobMesh(type) {
     const beak = new THREE.Mesh(new THREE.BoxGeometry(0.1 * sc, 0.08 * sc, 0.12 * sc), beakM); beak.position.set(0, 0.76 * sc, -0.36 * sc); g.add(beak);
     const combM = new THREE.MeshLambertMaterial({ color: 0xd23a3a }); mats.push(combM);
     const comb = new THREE.Mesh(new THREE.BoxGeometry(0.08 * sc, 0.12 * sc, 0.16 * sc), combM); comb.position.set(0, 0.95 * sc, -0.18 * sc); g.add(comb);
+    const wingGeo = new THREE.BoxGeometry(0.05 * sc, 0.24 * sc, 0.32 * sc);   // alas plegadas
+    for (const s of [-1, 1]) { const w = new THREE.Mesh(wingGeo, hm); w.position.set(s * 0.21 * sc, 0.52 * sc, 0.02); g.add(w); }
+    const tailF = new THREE.Mesh(new THREE.BoxGeometry(0.14 * sc, 0.18 * sc, 0.1 * sc), hm);   // plumas de la cola
+    tailF.position.set(0, 0.62 * sc, 0.26 * sc); tailF.rotation.x = -0.4; g.add(tailF);
     const legGeo = new THREE.BoxGeometry(0.06 * sc, 0.3 * sc, 0.06 * sc);
     const legL = new THREE.Mesh(legGeo, beakM); legL.position.set(0.1 * sc, 0.16 * sc, 0); g.add(legL);
     const legR = new THREE.Mesh(legGeo, beakM); legR.position.set(-0.1 * sc, 0.16 * sc, 0); g.add(legR);
@@ -4012,6 +4060,7 @@ function applyMobSnapshot(list) {
     if (!m) continue;
     if (e.hp < m.hp) m.hurtT = 0.22;
     m.tx = e.x; m.ty = e.y; m.tz = e.z; m.tyaw = e.yaw; m.hp = e.hp; m.mh = e.mh; m.tame = !!e.tm; m.wool = !!e.wl;
+    if (m.limbs.wool) m.limbs.wool.visible = !!e.wl;                                                    // lana visible según el anfitrión
     m.baby = !!e.bb; const s = e.bb ? 0.5 : 1; if (m.group.scale.x !== s) m.group.scale.set(s, s, s);   // crías más pequeñas
   }
   for (const id of [...mobs.keys()]) if (!seen.has(id)) removeMob(id);
@@ -4076,6 +4125,7 @@ function updatePassive(m, dt) {
   if (blockAtF(m.x, m.y + 0.1, m.z) === B.LAVA || m.y < -8) { m.hp = 0; }
   if (m.hp <= 0) { killMob(m, null); return; }
   if (m.def.wooly && !m.wool && m.woolT && nowMs() > m.woolT) { m.wool = true; m.woolT = 0; }   // le vuelve a crecer la lana
+  if (m.limbs.wool) m.limbs.wool.visible = !!m.wool;                                            // el abrigo de lana se ve solo si la tiene
   const d2 = (player.x - m.x) ** 2 + (player.z - m.z) ** 2;
   const despawnR = m.tame ? 140 : (def.flying || def.aquatic) ? 80 : 64;
   if (d2 > despawnR ** 2) { removeMob(m.id); return; }
